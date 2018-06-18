@@ -6,7 +6,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -32,7 +32,7 @@ public class LPCManager {
     private PrintWriter out = null;
     private BufferedReader in = null;
 
-    private ConcurrentLinkedQueue<Command> queue = null;
+    private LinkedBlockingQueue<Command> queue = null;
 
     private Command currentCommand = null;
     private Thread incommingHandler = null;
@@ -50,7 +50,7 @@ public class LPCManager {
 
         ip = "127.0.0.1";
         port = 8889;
-        queue = new ConcurrentLinkedQueue<Command>();
+        queue = new LinkedBlockingQueue<Command>(2);
         commandLock = new Object();
         responseLock = new Object();
 
@@ -109,16 +109,14 @@ public class LPCManager {
     }
 
     public String sendCommand(Command newCommand) throws LPCManagerException {
-//        final Command command = newCommand;
-//        Thread sendCommandThread = new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-        queue.add(newCommand);
+        try {
+            queue.put(newCommand);
+        } catch (InterruptedException ex) {
+            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+        }
         System.out.println("------queue size: " + queue.size() + "-------");
         System.out.print("Added to queue: " + newCommand.commandString);
-//            }
-//        });
-//        sendCommandThread.start();
+
 
         // Wait for Incomming Handler thread to wake you up when it has the response
         synchronized (responseLock) {
