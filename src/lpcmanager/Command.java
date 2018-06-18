@@ -25,14 +25,14 @@ public class Command {
         this.response = "PENDING";
     }
 
-    public String getResponse(){
+    public String getResponse() {
         return this.response;
     }
-    
+
     public void setResponse(String response) {
         this.response = response;
     }
-    
+
     public static Command errorTest() {
         return new Command("error, \r\n");
     }
@@ -40,40 +40,259 @@ public class Command {
     public static Command test() {
         return new Command("test,1,2,3 \r\n");
     }
-    
+
     public static Command test1() {
         return new Command("test,3,2,1 \r\n");
     }
-    
-    
+
+    /* ***************************************
+     *           Management Commands         *
+     * ***************************************/
+    /**
+     * Get the number of seconds since the last reset of the on-board ARM
+     * processor.
+     * <p>
+     * Command : getSysUptime
+     * Response : ok,[seconds]
+     * Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
     public static Command getSysUptime() {
         return new Command("getSysUptime\r\n");
     }
-    
+
+    /**
+     * Get the firmware version of the on-board ARM processor.
+     * <p>
+     * Command : getFWVer
+     * Response : ok,[version string, max 10 chars]
+     * Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
+    public static Command getFirmwareVersion() {
+        return new Command("getFWVer\r\n");
+    }
+
+    /**
+     * Get the hardware version of the main board.
+     * <p>
+     * Command : getHWVer
+     * Response : ok,[version string, max 20 chars]
+     * Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
+    public static Command getHardwareVersion() {
+        return new Command("getHWVer\r\n");
+    }
+
+    /**
+     * Get the unique hardware ID (S/N) of the on-oboard ARM processor.
+     * <p>
+     * Command : getHWID
+     * Response : ok,[id string, max 40 chars]
+     * Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
+    public static Command getHardwareId() {
+        return new Command("getHWID\r\n");
+    }
+
+    /**
+     * Get the unique hardware ID (S/N) of the on-oboard ARM processor.
+     * <p>
+     * Command : getHWStatus
+     * Response : ok,[lastBoot],[watchdog],[rtc],[debug]
+     * [lastBoot]:
+     * 0 = Ignition Input
+     * 1 = Overtemperature
+     * 2 = Brown-out detection
+     * 3 = SOFT reset
+     * 4 = HARD reset
+     * 5 = Power Button
+     * [watchdog]:
+     * 0 = OK
+     * 1 = Triggered
+     * [rtc]:
+     * 0 = OK
+     * 1 = Oscillator failed
+     * [debug]:
+     * 0 = Normal mode
+     * 1 = Debug mode
+     * <p>
+     * Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
+    public static Command getHardwareStatus() {
+        return new Command("getHWStatus\r\n");
+    }
+
+    /**
+     * Get the unique ID of the mounting position that the device is installed.
+     * <p>
+     * Command : getPoleID
+     * Response : ok,[poleID, max 16 chars]
+     * Available on : SV360, SV360LT
+     *
+     * @return Command object which contains the response
+     */
+    public static Command getPoleId() {
+        return new Command("getPoleID\r\n");
+    }
+
+    /* ***************************************
+     *        Power Control Commands         *
+     * ***************************************/
+    /**
+     * Controls the power state of the specified peripheral device.
+     * The default power state (following a reboot) of all peripherals is ON.
+     * <p>
+     * Command : setPeripheralPower,[peripheral],[state]
+     *
+     * @param peripheral String Peripheral description. Should be one of:
+     *                   0 = USB Hub
+     *                   1 = miniPCIe 1
+     *                   2 = miniPCIe 2
+     *                   3 = Display
+     *                   4 = Touch Controller
+     *                   5 = Serial Ports (FTDI)
+     *                   6 = USB Host 1
+     *                   7 = USB Host 2
+     *                   8 = RFID Reader
+     *                   9 = Printer
+     *                   10 = QR Reader
+     *                   11 = GP port 1
+     *                   12 = GP port 2
+     *                   13 = GP port 3
+     *                   14 = GP port 4
+     * @param state      String Set on or off. Should be one of:
+     *                   0 = OFF
+     *                   1 = ON
+     *                   Response : ok
+     *                   Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
+    public static Command setPeripheralPowerState(String peripheral, String state) {
+        return new Command("setPeripheralPower," + peripheral + "," + state + "\r\n");
+    }
+
+    /**
+     * Get the power state of the specified peripheral.
+     * <p>
+     * Command : getPeripheralPower,[peripheral]
+     *
+     * @param peripheral String Peripheral description. Should be one of:
+     *                   0 = USB Hub
+     *                   1 = miniPCIe 1
+     *                   2 = miniPCIe 2
+     *                   3 = Display
+     *                   4 = Touch Controller
+     *                   5 = Serial Ports (FTDI)
+     *                   6 = USB Host 1
+     *                   7 = USB Host 2
+     *                   8 = RFID Reader
+     *                   9 = Printer
+     *                   10 = QR Reader
+     *                   11 = GP port 1
+     *                   12 = GP port 2
+     *                   13 = GP port 3
+     *                   14 = GP port 4
+     *                   Response : ok,[state]
+     *                   [state]:
+     *                   0 = OFF
+     *                   1 = ON
+     *                   Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
+    public static Command getPeripheralPowerState(String peripheral) {
+        return new Command("setPeripheralPower," + peripheral + "\r\n");
+    }
+
+    /**
+     * Resets the specified peripheral. If the peripheral power state is OFF,
+     * the peripheral is first turned on and then a reset command is issued.
+     * <p>
+     * Command : resetPeripheral,[peripheral]
+     *
+     * @param peripheral String Peripheral description. Should be one of:
+     *                   0 = USB Hub
+     *                   1 = miniPCIe 1
+     *                   2 = miniPCIe 2
+     *                   3 = Display
+     *                   4 = Touch Controller
+     *                   5 = Serial Ports (FTDI)
+     *                   6 = USB Host 1
+     *                   7 = USB Host 2
+     *                   8 = RFID Reader
+     *                   9 = Printer
+     *                   10 = QR Reader
+     *                   11 = GP port 1
+     *                   12 = GP port 2
+     *                   13 = GP port 3
+     *                   14 = GP port 4
+     *                   Response : ok
+     *                   Available on : MT301LX, SV360, SV360LT, SV360D
+     *
+     * @return Command object which contains the response
+     */
+    public static Command resetPeripheral(String peripheral) {
+        return new Command("resetPeripheral," + peripheral + "\r\n");
+    }
+
+    /**
+     * Get the state of the ignition input.
+     * <p>
+     * On MT301LX :
+     * Returns the state of the general purpose input. This command is not
+     * supported
+     * in all hardware versions of the MT301LX. The commands Get Input and Get
+     * System Voltage
+     * are mutually exclusive, i.e. only one of them may work on a specific
+     * board.
+     * By default the command Get System Voltage is supported.
+     * <p>
+     * Command : getIgnitionInput
+     * Response : ok,[state]
+     * [state]:
+     * 0 = Ignition OFF (LOW for MT301LX)
+     * 1 = Ignition ON (HIGHT for MT301LX)
+     * Available on : MT301LX, SV360, SV360LT
+     *
+     * @return Command object which contains the response.
+     */
+    public static Command getIgnitionInput() {
+        return new Command("getIgnitionInput\r\n");
+    }
+
+    /**
+     * Get the input voltage of the system in Volts. This command is not
+     * supported
+     * in all hardware versions of the MT301LX. The commands Get Input and
+     * Get System Voltage are mutually exclusive, i.e. only one of them may
+     * work on a specific board. By default the command Get System Voltage is
+     * supported.
+     * <p>
+     * Command : getSystemVoltage
+     * Response : ok,[voltage]
+     * [voltage]: Input volts, floating point value.
+     * <p>
+     * Available on : MT301LX
+     *
+     * @return Command object which contains the response.
+     */
+    public static Command getSystemVoltage() {
+        return new Command("getSystemVoltage\r\n");
+    }
+
     public static Command screenOff() {
         return new Command("screenOff\r\n");
     }
-//    public static Command screenOff() {
-//        return new Command("screenOff\r\n");
-//    }
-//    public static Command screenOff() {
-//        return new Command("screenOff\r\n");
-//    }
-//    public static Command screenOff() {
-//        return new Command("screenOff\r\n");
-//    }
-//    public static Command screenOff() {
-//        return new Command("screenOff\r\n");
-//    }
-//    public static Command screenOff() {
-//        return new Command("screenOff\r\n");
-//    }
-//    public static Command screenOff() {
-//        return new Command("screenOff\r\n");
-//    }
-//    public static Command screenOff() {
-//        return new Command("screenOff\r\n");
-//    }
 //    public static Command screenOff() {
 //        return new Command("screenOff\r\n");
 //    }
@@ -465,5 +684,5 @@ public class Command {
             return null;
         }
     }
-*/
+     */
 }
