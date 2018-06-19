@@ -6,6 +6,8 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -22,7 +24,6 @@ import java.util.logging.Logger;
  */
 public class LPCManager {
 
-    private static final LPCManager INSTANCE;
     private final int port;
     private final String ip;
     private final Object commandLock;
@@ -37,33 +38,27 @@ public class LPCManager {
     private Command currentCommand = null;
     private Thread incommingHandler = null;
     private Thread queueConsumer = null;
-
-    static {
-        try {
-            INSTANCE = new LPCManager();
-        } catch (Exception ex) {
-            throw new ExceptionInInitializerError("LPC failed to initialize: " + ex);
-        }
-    }
-
-    private LPCManager() {
-
+    
+    /**
+     * Use LPCManagerFactory to create new LPCManager
+     * 
+     * @param ip
+     * @param port 
+     */
+    public LPCManager(String ip, Integer port) {
+     
         // read from config
-        ip = "127.0.0.1";
-        port = 8889;
         queue = new LinkedBlockingQueue<Command>(2);
 
         // other initialization
-        commandLock = new Object();
-        responseLock = new Object();
+        this.ip = ip;
+        this.port = port;
+        this.commandLock = new Object();
+        this.responseLock = new Object();
 
         setupSocket();
         startIncommingHandler();
         startConsumeQueue();
-    }
-
-    public static LPCManager getInstance() {
-        return INSTANCE;
     }
 
     public void terminateLPCManager() {
@@ -116,7 +111,7 @@ public class LPCManager {
             queue.add(newCommand);
         } catch (IllegalStateException ex) {
             System.out.println("WOW");
-//            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
         }
         System.out.println("------queue size: " + queue.size() + "-------");
         System.out.print("Added to queue: " + newCommand.commandString);

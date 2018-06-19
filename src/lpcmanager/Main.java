@@ -19,12 +19,13 @@ public class Main {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        final LPCManager a = LPCManager.getInstance();
+        final LPCManager a;
+        a = LPCManagerFactory.getLPCManager("127.0.0.1", 8889);
 
         // START BATCH IN THREAD
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
                 ArrayList<String> replies = new ArrayList<String>();
 
                 System.out.println("-------THREAD STARTED---------------");
@@ -38,8 +39,8 @@ public class Main {
                     System.out.println(reply);
                 }
 
-//            }
-//        }).start();
+            }
+        }).start();
 
         // ADD COMMAND TO QUEUE
         System.out.println("\n1");
@@ -50,38 +51,38 @@ public class Main {
         }
 
         // START BATCH IN THREAD WITH ERROR
-//        System.out.println("\n2");
-//        ArrayList<String> replies = new ArrayList<String>();
-//
-//        try {
-//            replies = a.sendBatchCommand(Command.screenOff(), Command.errorTest(), Command.screenOn());
-//            // NEVER PRINT
-//            System.out.println("**** REPLY FORM BATCH WITH ERROR ****");
-//            for (String reply : replies) {
-//                System.out.println(reply);
-//            }
-//        } catch (LPCManagerException e) {
-//            System.out.println("EX");
-//        }
+        System.out.println("\n2");
+        ArrayList<String> replies = new ArrayList<String>();
+
+        try {
+            replies = a.sendBatchCommand(Command.screenOff(), Command.errorTest(), Command.screenOn());
+            // NEVER PRINT
+            System.out.println("**** REPLY FORM BATCH WITH ERROR ****");
+            for (String reply : replies) {
+                System.out.println(reply);
+            }
+        } catch (LPCManagerException e) {
+            System.out.println("EX");
+        }
 
         // START BATCH IN THREAD
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                ArrayList<String> replies = new ArrayList<String>();
-//
-//                System.out.println("-------THREAD STARTED---------------");
-//                try {
-//                    replies = a.sendBatchCommand(Command.test(), Command.test(), Command.test(), Command.test(), Command.test());
-//                } catch (LPCManagerException ex) {
-//                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-//                }
-//                for (String reply : replies) {
-//                    System.out.println(reply);
-//                }
-//            }
-//
-//        }).start();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                ArrayList<String> replies = new ArrayList<String>();
+
+                System.out.println("-------THREAD STARTED---------------");
+                try {
+                    replies = a.sendBatchCommand(Command.test(), Command.test(), Command.test(), Command.test(), Command.test());
+                } catch (LPCManagerException ex) {
+                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                for (String reply : replies) {
+                    System.out.println(reply);
+                }
+            }
+
+        }).start();
 
         // ADD COMMAND TO QUEUE
         System.out.println("\n3");
@@ -99,6 +100,13 @@ public class Main {
             System.out.println("EX");
         }
 
+        LPCManager b = LPCManagerFactory.getLPCManager("127.0.0.1", 8889);
+
+        if (a == b) {
+            System.out.println("SAME");
+        } else {
+            System.out.println("NOT SAME");
+        }
     }
 
 }
