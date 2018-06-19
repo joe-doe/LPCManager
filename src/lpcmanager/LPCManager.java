@@ -48,9 +48,12 @@ public class LPCManager {
 
     private LPCManager() {
 
+        // read from config
         ip = "127.0.0.1";
         port = 8889;
         queue = new LinkedBlockingQueue<Command>(2);
+
+        // other initialization
         commandLock = new Object();
         responseLock = new Object();
 
@@ -110,13 +113,13 @@ public class LPCManager {
 
     public String sendCommand(Command newCommand) throws LPCManagerException {
         try {
-            queue.put(newCommand);
-        } catch (InterruptedException ex) {
-            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+            queue.add(newCommand);
+        } catch (IllegalStateException ex) {
+            System.out.println("WOW");
+//            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
         }
         System.out.println("------queue size: " + queue.size() + "-------");
         System.out.print("Added to queue: " + newCommand.commandString);
-
 
         // Wait for Incomming Handler thread to wake you up when it has the response
         synchronized (responseLock) {
