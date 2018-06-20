@@ -5,6 +5,9 @@
  */
 package lpcmanager;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 /**
  *
  * @author user
@@ -35,6 +38,10 @@ public class Command {
 
     public static Command errorTest() {
         return new Command("error, \r\n");
+    }
+
+    public static Command maintenance() {
+        return new Command("maintenance, \r\n");
     }
 
     public static Command test() {
