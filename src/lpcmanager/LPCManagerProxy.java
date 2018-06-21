@@ -5,6 +5,7 @@
  */
 package lpcmanager;
 
+import java.util.ArrayList;
 import java.util.Hashtable;
 
 
@@ -12,7 +13,7 @@ import java.util.Hashtable;
  *
  * @author user
  */
-public class LPCManagerFactory {
+public class LPCManagerProxy {
 
     private static Hashtable<Hashtable<String, Integer>, LPCManager> runningInstances = new Hashtable<Hashtable<String, Integer>, LPCManager>();
 
@@ -22,9 +23,10 @@ public class LPCManagerFactory {
      *
      * @param ip
      * @param port
+     * @param maintenanceCommands
      * @return LPCManager object
      */
-    public static LPCManager getLPCManager(String ip, Integer port) {
+    public static LPCManager getLPCManager(String ip, Integer port, ArrayList<Command> maintenanceCommands) {
         Hashtable<String, Integer> requestedPair = new Hashtable<String, Integer>();
         requestedPair.put(ip, port);
         
@@ -33,7 +35,7 @@ public class LPCManagerFactory {
             return runningInstances.get(requestedPair);
         }
 
-        LPCManager newInstance = new LPCManager(ip, port);
+        LPCManager newInstance = new LPCManager(ip, port, maintenanceCommands);
         runningInstances.put(requestedPair, newInstance);
         return newInstance;
     }

@@ -1,14 +1,19 @@
 package lpcmanager;
 
+import com.amco.amcoticketmt.utils.MTProperties;
+import com.amco.amcoticketmt.utils.PropName;
+import com.amco.amcoticketmt.utils.ThreadUtil;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Hashtable;
-import java.util.Map;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -34,31 +39,37 @@ public class LPCManager {
     private BufferedReader in = null;
 
     private LinkedBlockingQueue<Command> queue = null;
+    private ArrayList<Command> maintenanceCommands = null;
+    private ScheduledFuture<?> maintenanceScheduler;
 
     private Command currentCommand = null;
     private Thread incommingHandler = null;
     private Thread queueConsumer = null;
-    
+    private Thread maintenanceThread = null;
+
     /**
-     * Use LPCManagerFactory to create new LPCManager
-     * 
+     * Use LPCManagerProxy to create new LPCManager
+     *
      * @param ip
-     * @param port 
+     * @param port
+     * @param maintenanceCommands
      */
-    public LPCManager(String ip, Integer port) {
-     
+    public LPCManager(String ip, Integer port, ArrayList<Command> maintenanceCommands) {
+
         // read from config
-        queue = new LinkedBlockingQueue<Command>(2);
+        this.queue = new LinkedBlockingQueue<Command>(2);
 
         // other initialization
         this.ip = ip;
         this.port = port;
+        this.maintenanceCommands = maintenanceCommands;
         this.commandLock = new Object();
         this.responseLock = new Object();
 
         setupSocket();
         startIncommingHandler();
         startConsumeQueue();
+        startMaintenanceThreads();
     }
 
     public void terminateLPCManager() {
@@ -108,13 +119,14 @@ public class LPCManager {
 
     public String sendCommand(Command newCommand) throws LPCManagerException {
         try {
+            System.out.print("Added to queue: " + newCommand.commandString);
             queue.add(newCommand);
         } catch (IllegalStateException ex) {
             System.out.println("WOW");
             Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-        System.out.println("------queue size: " + queue.size() + "-------");
-        System.out.print("Added to queue: " + newCommand.commandString);
+//        System.out.println("------queue size: " + queue.size() + "-------");
+//        System.out.print("Added to queue: " + newCommand.commandString);
 
         // Wait for Incomming Handler thread to wake you up when it has the response
         synchronized (responseLock) {
@@ -159,6 +171,64 @@ public class LPCManager {
         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
     }
 
+    /**
+     * Iterate maintenance commands list and start a scheduler at a fix rate
+     * to send the maintenance command in intervals.
+     * <p>
+     * When the scheduled job starts, waits for the queue to be empty, then
+     * adds the command to the queue. If queue is not empty sleeps for half
+     * a second and then retries.
+     */
+    private void startMaintenanceThreads() {
+//        Integer lo = MTProperties.getInt(PropName.TickThread, 0);
+        Integer lo = 3;
+
+        if (maintenanceCommands == null) {
+            return;
+        }
+        for (final Command command : maintenanceCommands) {
+            try {
+                ThreadUtil.scheduleAtFixedRate(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        AtomicBoolean retry = new AtomicBoolean(true);
+                        Integer retries = 0;
+
+                        while (retry.get()) {
+                            if (queue.isEmpty()) {
+                                try {
+                                    sendCommand(command);
+                                    System.out.print("****************** SEND MAINTENEANCE JOB: " + command.commandString);
+                                    System.out.print("****************** success after retries: " + retries + " job: "+command.commandString);
+                                    retry.set(false);
+                                } catch (LPCManagerException ex) {
+                                    Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+                                }
+                            } else {
+                                try {
+                                    System.out.print("****************** QUEUE NOT EMTPY. SLEEP FOR HALF A SECOND AND RETRY SEND: " + command.commandString);
+
+                                    Thread.sleep(150);
+                                } catch (InterruptedException ex) {
+                                    Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+                                }
+                                retries++;
+                                System.out.print("****************** retries: " + retries + " job: "+command.commandString );
+                                if (retries > 3) {
+                                    System.out.print("****************** MAX retries: " + retries+ " job: "+command.commandString );
+                                    retry.set(false);
+                                }
+                            }
+                        }
+                    }
+                }, 100, 2000, TimeUnit.MILLISECONDS);
+            } catch (Exception ex) {
+                Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+    }
+
     private void startConsumeQueue() {
         queueConsumer = new Thread(new Runnable() {
 
@@ -170,9 +240,16 @@ public class LPCManager {
                     if (!socket.isClosed()) {
                         // Socket ready
 
+                        // Emulate delay for picking up next item from queue
+//                        try {
+//                            Thread.sleep(1300);
+//                        } catch (InterruptedException ex) {
+//                            Logger.getLogger(Command.class.getName()).log(Level.SEVERE, null, ex);
+//                        }
                         synchronized (commandLock) {
-                            // Proccess queue
-                            if ((currentCommand = queue.poll()) != null) {
+                            try {
+                                // Proccess queue (block)
+                                currentCommand = queue.take();
                                 System.out.print("Send command from queue:" + currentCommand.commandString);
                                 out.write(currentCommand.commandString);
                                 out.flush();
@@ -183,15 +260,9 @@ public class LPCManager {
                                 } catch (InterruptedException ex) {
                                     Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
                                 }
+                            } catch (InterruptedException ex) {
+                                Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
                             }
-                        }
-                        // Do maintenance jobs
-                        //TODO
-                        // Sleep for half a second
-                        try {
-                            Thread.sleep(500);
-                        } catch (InterruptedException ex) {
-                            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
                         }
                     } else {
                         // Socket not ready
@@ -199,7 +270,8 @@ public class LPCManager {
                     }
                 }
             }
-        });
+        }
+        );
 
         queueConsumer.start();
     }
@@ -218,8 +290,10 @@ public class LPCManager {
                         try {
                             // Proccess incomming
                             incommingString = in.readLine();
+
                         } catch (IOException ex) {
-                            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+                            Logger.getLogger(LPCManager.class
+                                    .getName()).log(Level.SEVERE, null, ex);
                             continue;
                         }
 
