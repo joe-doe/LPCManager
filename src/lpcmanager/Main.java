@@ -34,6 +34,7 @@ public class Main {
                 try {
                     replies = a.sendBatchCommand(Command.test1(), Command.test1(), Command.test1(), Command.test1(), Command.test1());
                 } catch (LPCManagerException ex) {
+                    System.out.println("1 *************************");
                     Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
                 }
 
@@ -43,15 +44,46 @@ public class Main {
 
             }
         }).start();
-
+        // START BATCH IN THREAD
+//        new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                ArrayList<String> replies = new ArrayList<String>();
+//
+//                System.out.println("-------THREAD STARTED---------------");
+//                try {
+//                    replies = a.sendBatchCommand(Command.screenOn(true), Command.screenOn(true), Command.screenOn(true), Command.screenOn(true), Command.screenOn(false));
+//                } catch (LPCManagerException ex) {
+//                    System.out.println("1 *************************");
+//                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+//                }
+//
+//                for (String reply : replies) {
+//                    System.out.println(reply);
+//                }
+//
+//            }
+//        }).start();
         // ADD COMMAND TO QUEUE
-//        System.out.println("\n1");
+        System.out.println("\n1");
+        for (int i = 0; i < 10; i++) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        System.out.println("FULL RESP: " + a.sendCommand(Command.screenOff()));
+                    } catch (LPCManagerException ex) {
+                        Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+            }).start();
+        }
+
 //        try {
-//            System.out.println("FULL RESP: " + a.sendCommand(Command.screenOff()));
+//            System.out.println("FULL RESP: " + a.sendCommand(Command.screenOn(false)));
 //        } catch (LPCManagerException ex) {
 //            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
 //        }
-
         // START BATCH IN THREAD WITH ERROR
 //        System.out.println("\n2");
 //        ArrayList<String> replies = new ArrayList<String>();
@@ -68,23 +100,24 @@ public class Main {
 //        }
 //
 //        // START BATCH IN THREAD
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                ArrayList<String> replies = new ArrayList<String>();
-//
-//                System.out.println("-------THREAD STARTED---------------");
-//                try {
-//                    replies = a.sendBatchCommand(Command.test(), Command.test(), Command.test(), Command.test(), Command.test());
-//                } catch (LPCManagerException ex) {
-//                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-//                }
-//                for (String reply : replies) {
-//                    System.out.println(reply);
-//                }
-//            }
-//
-//        }).start();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                ArrayList<String> replies = new ArrayList<String>();
+
+                System.out.println("-------THREAD STARTED---------------");
+                try {
+                    replies = a.sendBatchCommand(Command.test(), Command.test(), Command.test(), Command.test(), Command.test());
+                } catch (LPCManagerException ex) {
+                    System.out.println("2 *************************");
+                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                for (String reply : replies) {
+                    System.out.println(reply);
+                }
+            }
+
+        }).start();
 //
 //        // ADD COMMAND TO QUEUE
 //        System.out.println("\n3");

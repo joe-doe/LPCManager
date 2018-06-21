@@ -49,6 +49,11 @@ public class Command {
     }
 
     public static Command test1() {
+//        try {
+//            Thread.sleep(3000);
+//        } catch (InterruptedException ex) {
+//            Logger.getLogger(Command.class.getName()).log(Level.SEVERE, null, ex);
+//        }
         return new Command("test,3,2,1 \r\n");
     }
 

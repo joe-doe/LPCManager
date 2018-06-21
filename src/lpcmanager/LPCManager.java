@@ -40,7 +40,7 @@ public class LPCManager {
 
     private LinkedBlockingQueue<Command> queue = null;
     private ArrayList<Command> maintenanceCommands = null;
-    private ScheduledFuture<?> maintenanceScheduler;
+    private ScheduledFuture<?> maintenanceScheduler = null;
 
     private Command currentCommand = null;
     private Thread incommingHandler = null;
@@ -57,7 +57,7 @@ public class LPCManager {
     public LPCManager(String ip, Integer port, ArrayList<Command> maintenanceCommands) {
 
         // read from config
-        this.queue = new LinkedBlockingQueue<Command>(2);
+        this.queue = new LinkedBlockingQueue<Command>(12);
 
         // other initialization
         this.ip = ip;
@@ -117,14 +117,38 @@ public class LPCManager {
         });
     }
 
-    public String sendCommand(Command newCommand) throws LPCManagerException {
+    public String sendCommand(final Command newCommand) throws LPCManagerException {
+        System.out.println("------queue size: " + queue.size() + "-------");
+
+//        new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                try {
+//                System.out.print("Added to queue: " + newCommand.commandString);
         try {
-            System.out.print("Added to queue: " + newCommand.commandString);
-            queue.add(newCommand);
-        } catch (IllegalStateException ex) {
-            System.out.println("WOW");
-            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
-        }
+                                queue.add(newCommand);
+//            queue.offer(newCommand, 1, TimeUnit.SECONDS);
+//        } catch (InterruptedException ex) {
+//            System.out.println("WOW");
+//            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+//            throw new LPCManagerException("LPC response waiting error!", ex);
+//
+//        }
+                } catch (IllegalStateException ex) {
+                    System.out.println("WOW");
+                    Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+                    throw new LPCManagerException("NO FIT", ex);
+                }
+            
+//
+//        }).start();
+//        try {
+//            System.out.print("Added to queue: " + newCommand.commandString);
+//            queue.add(newCommand);
+//        } catch (IllegalStateException ex) {
+//            System.out.println("WOW");
+//            Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
+//        }
 //        System.out.println("------queue size: " + queue.size() + "-------");
 //        System.out.print("Added to queue: " + newCommand.commandString);
 
@@ -199,8 +223,8 @@ public class LPCManager {
                             if (queue.isEmpty()) {
                                 try {
                                     sendCommand(command);
-                                    System.out.print("****************** SEND MAINTENEANCE JOB: " + command.commandString);
-                                    System.out.print("****************** success after retries: " + retries + " job: "+command.commandString);
+//                                    System.out.print("****************** SEND MAINTENEANCE JOB: " + command.commandString);
+//                                    System.out.print("****************** success after retries: " + retries + " job: "+command.commandString);
                                     retry.set(false);
                                 } catch (LPCManagerException ex) {
                                     Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
@@ -209,14 +233,14 @@ public class LPCManager {
                                 try {
                                     System.out.print("****************** QUEUE NOT EMTPY. SLEEP FOR HALF A SECOND AND RETRY SEND: " + command.commandString);
 
-                                    Thread.sleep(150);
+                                    Thread.sleep(500);
                                 } catch (InterruptedException ex) {
                                     Logger.getLogger(LPCManager.class.getName()).log(Level.SEVERE, null, ex);
                                 }
                                 retries++;
-                                System.out.print("****************** retries: " + retries + " job: "+command.commandString );
+//                                System.out.print("****************** retries: " + retries + " job: "+command.commandString );
                                 if (retries > 3) {
-                                    System.out.print("****************** MAX retries: " + retries+ " job: "+command.commandString );
+//                                    System.out.print("****************** MAX retries: " + retries+ " job: "+command.commandString );
                                     retry.set(false);
                                 }
                             }
