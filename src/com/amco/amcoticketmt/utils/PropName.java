@@ -75,6 +75,8 @@ public enum PropName {
     TicketFindCurrentVersionService,
     RestartAfterUpgrade,
     LCDImagesPath,
-    LPCMessageDuration;
+    LPCMessageDuration,
+    LPCManagerMainenanceJobs,
+    LPCQueueSize;
 }
 
