@@ -3,12 +3,12 @@
     <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
         <group>
+            <file>file:/home/user/Workspace/LPCManager/src/com/amco/amcoticketmt/utils/PropName.java</file>
             <file>file:/home/user/Workspace/LPCManager/src/lpcmanager/Main.java</file>
             <file>file:/home/user/Workspace/LPCManager/src/lpcmanager/Command.java</file>
-            <file>file:/home/user/Workspace/LPCManager/src/lpcmanager/LPCManagerException.java</file>
-            <file>file:/home/user/Workspace/LPCManager/src/lpcmanager/LPCManagerProxy.java</file>
             <file>file:/home/user/Workspace/LPCManager/src/lpcmanager/LPCManager.java</file>
             <file>file:/home/user/Workspace/LPCManager/src/com/amco/amcoticketmt/utils/ThreadUtil.java</file>
+            <file>file:/home/user/Workspace/LPCManager/src/com/amco/amcoticketmt/utils/AmcoTicketOBUProperties.properties</file>
         </group>
     </open-files>
 </project-private>
