@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="DEBUG">
+    <Properties>
+        <Property name="log-path">/tmp/A</Property>
+    </Properties>
+    <Appenders>
+    <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout>
+                <pattern>%d{dd/MMM/yyyy HH:mm:ss} - [%t] %-5level %logger{36} - %msg%n</pattern>
+            </PatternLayout>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="root" level="debug">
+            <appender-ref ref="Console" level="debug"/>
+        </Logger>
+        <Root level="debug" >
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>
