@@ -6,8 +6,10 @@
 package lpcmanager;
 
 import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.Scanner;
+import org.apache.logging.log4j.Level;
+
+import org.apache.logging.log4j.LogManager;
 
 /**
  *
@@ -15,16 +17,38 @@ import java.util.logging.Logger;
  */
 public class Main {
 
+        private static final org.apache.logging.log4j.Logger LOGGER = LogManager.getLogger(LPCManager.class);
+
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
+
         ArrayList<Command> ml = new ArrayList<Command>();
         ml.add(Command.maintenance());
         ml.add(Command.getSysUptime());
         final LPCManager a = LPCManagerProxy.getLPCManager("127.0.0.1", 8889, ml);
 
-        // START BATCH IN THREAD
+        Thread kb = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+            Scanner keyboard = new Scanner(System.in);
+                while (true) {
+                    String i = keyboard.nextLine();
+
+                        System.out.println(i);
+                        try {
+                            System.out.println("KEYBOARD RESPONSE: " + a.sendCommand(Command.getHardwareId()));
+                        } catch (LPCManagerException ex) {
+                            LOGGER.log(Level.ERROR, "KEYBOARD LPC EXCEPTION",ex.getMessage());
+                        }
+                    }
+                }
+        });
+        kb.start();
+
+//        // START BATCH IN THREAD
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -35,7 +59,7 @@ public class Main {
                     replies = a.sendBatchCommand(Command.test1(), Command.test1(), Command.test1(), Command.test1(), Command.test1());
                 } catch (LPCManagerException ex) {
                     System.out.println("1 *************************");
-                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+                    LOGGER.log(Level.ERROR, "BATCH LPC EXCEPTION");
                 }
 
                 for (String reply : replies) {
@@ -64,16 +88,17 @@ public class Main {
 //
 //            }
 //        }).start();
-        // ADD COMMAND TO QUEUE
+
+//         ADD COMMAND TO QUEUE
         System.out.println("\n1");
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 3; i++) {
             new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        System.out.println("FULL RESP: " + a.sendCommand(Command.screenOff()));
+                        System.out.println("SCREEN OFF FULL RESP: " + a.sendCommand(Command.screenOff()));
                     } catch (LPCManagerException ex) {
-                        Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+                        LOGGER.log(Level.ERROR, ex.getMessage());
                     }
                 }
             }).start();
@@ -100,24 +125,24 @@ public class Main {
 //        }
 //
 //        // START BATCH IN THREAD
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                ArrayList<String> replies = new ArrayList<String>();
-
-                System.out.println("-------THREAD STARTED---------------");
-                try {
-                    replies = a.sendBatchCommand(Command.test(), Command.test(), Command.test(), Command.test(), Command.test());
-                } catch (LPCManagerException ex) {
-                    System.out.println("2 *************************");
-                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-                }
-                for (String reply : replies) {
-                    System.out.println(reply);
-                }
-            }
-
-        }).start();
+//        new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                ArrayList<String> replies = new ArrayList<String>();
+//
+//                System.out.println("-------THREAD STARTED---------------");
+//                try {
+//                    replies = a.sendBatchCommand(Command.test(), Command.test(), Command.test(), Command.test(), Command.test());
+//                } catch (LPCManagerException ex) {
+//                    System.out.println("2 *************************");
+//                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+//                }
+//                for (String reply : replies) {
+//                    System.out.println(reply);
+//                }
+//            }
+//
+//        }).start();
 //
 //        // ADD COMMAND TO QUEUE
 //        System.out.println("\n3");
