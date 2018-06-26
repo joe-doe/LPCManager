@@ -1,8 +1,8 @@
 package lpcmanager;
 
-import com.amco.amcoticketmt.utils.MTProperties;
-import com.amco.amcoticketmt.utils.PropName;
-import com.amco.amcoticketmt.utils.ThreadUtil;
+import main.java.com.amco.amcoticketmt.utils.MTProperties;
+import main.java.com.amco.amcoticketmt.utils.PropName;
+import main.java.com.amco.amcoticketmt.utils.ThreadUtil;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -10,9 +10,12 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.concurrent.Executors;
 
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -22,13 +25,13 @@ import org.apache.logging.log4j.Level;
 
 /**
  * Class that is responsible to open a socket with LPC server and use it
- * to send and receive data. 
- * 
- * One thread listens for incoming traffic and another 
+ * to send and receive data.
+ * <p>
+ * One thread listens for incoming traffic and another
  * thread reading commands from a queue and sending them to LPC server.
- * Threads communicate each other with wait() and notify() in order 
+ * Threads communicate each other with wait() and notify() in order
  * for a dispatched command to wait for the reply.
- * 
+ *
  * @author user
  */
 public class LPCManager {
@@ -46,22 +49,27 @@ public class LPCManager {
 
     private LinkedBlockingQueue<Command> queue = null;
     private ArrayList<Command> maintenanceCommands = null;
+    private ArrayList<ScheduledFuture<?>> maintenanceTasks = null;
     private ScheduledFuture<?> maintenanceScheduler = null;
+    private ScheduledExecutorService scheduler;
 
     private Command currentCommand = null;
-    private Thread incommingHandler = null;
-    private Thread queueConsumer = null;
+    private Thread incomingHandler = null;
+    private Thread outcomingHandler = null;
+    private Thread threadsWatchdog = null;
 
     /**
      * Use LPCManagerProxy to create new LPCManager
      *
-     * @param ip IP Address of the LPC server
-     * @param port Port of the LPC server
-     * @param maintenanceCommands List of maintenance commands 
+     * @param ip                  IP Address of the LPC server
+     * @param port                Port of the LPC server
+     * @param maintenanceCommands List of maintenance commands
      */
     public LPCManager(String ip, Integer port, ArrayList<Command> maintenanceCommands) {
 
+        this.scheduler = Executors.newScheduledThreadPool(MTProperties.getInt(PropName.ThreadPoolSize));
         this.queue = new LinkedBlockingQueue<Command>(MTProperties.getInt(PropName.LPCQueueSize, 5));
+        this.maintenanceTasks = new ArrayList<ScheduledFuture<?>>();
         this.ip = ip;
         this.port = port;
         this.maintenanceCommands = maintenanceCommands;
@@ -69,9 +77,10 @@ public class LPCManager {
         this.responseLock = new Object();
 
         setupSocket();
-        startIncommingHandler();
-        startOutcommingHandler();
+        startIncomingHandler();
+        startOutcomingHandler();
         startMaintenanceJobs();
+        startWatchdog();
     }
 
     /**
@@ -79,10 +88,13 @@ public class LPCManager {
      */
     public void terminateLPCManager() {
         try {
+            scheduler.shutdownNow();
+
             out.flush();
             out.close();
             in.close();
             socket.close();
+
         } catch (IOException ex) {
             LOGGER.log(Level.FATAL, "Failed to terminate LPCManager", ex);
         }
@@ -91,18 +103,17 @@ public class LPCManager {
     /**
      * Setup socket for communication with the LPC server.
      * The same socket is used for sending and receiving data.
+     *
+     * @return True if successful, false if not
      */
-    private void setupSocket() {
-        if (out != null) {
-            out.flush();
-            out.close();
-        }
+    private boolean setupSocket() {
+        boolean setupOK = false;
 
-        if (in != null) {
+        if (socket != null) {
             try {
-                in.close();
+                socket.close();
             } catch (IOException ex) {
-                LOGGER.log(Level.INFO, ex);
+                LOGGER.log(Level.ERROR, ex);
             }
         }
 
@@ -110,21 +121,26 @@ public class LPCManager {
             socket = new Socket(ip, port);
             out = new PrintWriter(socket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            setupOK = true;
         } catch (IOException ex) {
-            LOGGER.log(Level.FATAL, "Failed to setup socket", ex);
+            LOGGER.log(Level.ERROR, "Failed to setup socket", ex.getMessage());
+            setupOK = false;
         }
 
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-                try {
-                    socket.close();
-                    System.out.println("The server is shut down!");
-                } catch (IOException ex) {
-                    LOGGER.log(Level.ERROR, "Failed to shut down socket", ex);
+        Runtime.getRuntime()
+                .addShutdownHook(new Thread() {
+                    @Override
+                    public void run() {
+                        try {
+                            socket.close();
+                            LOGGER.log(Level.WARN, "The socket is closed!");
+                        } catch (IOException ex) {
+                            LOGGER.log(Level.ERROR, "Failed to shut down socket", ex);
+                        }
+                    }
                 }
-            }
-        });
+                );
+        return setupOK;
     }
 
     /**
@@ -138,33 +154,41 @@ public class LPCManager {
      * have to wait for a a reply.
      */
     public String sendCommand(final Command newCommand) throws LPCManagerException {
-        System.out.println("------queue size: " + queue.size() + "-------");
+        if (socket.isClosed()) {
+            LOGGER.log(Level.ERROR, "LPC Not accepting new entries; socket is down");
+            throw new LPCManagerException("LPC Not accepting new entries; socket is down");
+        }
+//        System.out.println("------queue size: " + queue.size() + "-------");
         boolean successfullyAddedToQueue = false;
 
         // Try to add  the specified element into this queue, waiting up 
         // to the specified wait time if necessary for space to become available.
-        try {
-            successfullyAddedToQueue = queue.offer(newCommand, 1, TimeUnit.SECONDS);
-        } catch (InterruptedException ex) {
-            LOGGER.log(Level.ERROR, "Interrupted while waiting to insert to queue", ex);
-            throw new LPCManagerException("LPC command: " + newCommand.commandString + " not added to queue", ex);
-
-        }
-
-        if (successfullyAddedToQueue == false) {
-            throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
-        }
-
-//        System.out.println("------queue size: " + queue.size() + "-------");
-//        System.out.print("Added to queue: " + newCommand.commandString);
-        // New command successfuly added to queue.
-        // Wait for Incomming Handler thread to wake you up when it has the response.
+//        try {
+//            successfullyAddedToQueue = queue.offer(newCommand, 1, TimeUnit.SECONDS);
+//        } catch (InterruptedException ex) {
+//            LOGGER.log(Level.ERROR, "Interrupted while waiting to insert to queue", ex);
+//            throw new LPCManagerException("LPC command: " + newCommand.commandString + " not added to queue", ex);
+//
+//        }
+        // Add to queue and wait for Incoming Handler thread 
+        // to wake you up when it has the response.
         synchronized (responseLock) {
+            System.out.println("------queue size: " + queue.size() + "-------");
+            try {
+                successfullyAddedToQueue = queue.add(newCommand);
+            } catch (IllegalStateException ex) {
+                throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
+            }
+            if (successfullyAddedToQueue == false) {
+                throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
+            }
+
+            LOGGER.log(Level.INFO, "Added to queue: " + newCommand.commandString);
             try {
                 responseLock.wait();
             } catch (InterruptedException ex) {
-                LOGGER.log(Level.ERROR, "Interrupted while waiting for response", ex);
-                throw new LPCManagerException("LPC response waiting error!", ex);
+                LOGGER.log(Level.ERROR, "Interrupted while waiting for response: " + currentCommand.commandString, ex);
+                throw new LPCManagerException("LPC response waiting interrupted!", ex);
             }
         }
 
@@ -195,7 +219,7 @@ public class LPCManager {
      * When it is an 'error' throw LPCManagerException.
      * When it is 'ok' return the reply written in currentCommand.
      * Events are handled right after the data arrive to
-     * socket (see 'startIncommingHandler')
+     * socket (see 'startIncomingHandler')
      *
      * @return The reply from LPC server without the starting 'ok'
      * if the reply has data (comma separated values)
@@ -206,11 +230,14 @@ public class LPCManager {
         String lpcResponse = currentCommand.getResponse();
 
         if (lpcResponse.startsWith("ok,error")) {
-            System.out.println("Got ERROR from lpc");
+            LOGGER.log(Level.ERROR, "Got ERROR from lpc");
             throw new LPCManagerException("OOPS");
+        } else if (lpcResponse.startsWith("LPC is down")) {
+            LOGGER.log(Level.ERROR, "Got reply 'LPC is down'");
+            throw new LPCManagerException("LPC is down");
         } else if (lpcResponse.startsWith("ok")) {
             String a = lpcResponse.substring(lpcResponse.indexOf(",") + 1);
-            System.out.println("ANSWER: " + a);
+            LOGGER.log(Level.INFO, "ANSWER: " + a);
         }
 
         return lpcResponse;
@@ -218,17 +245,17 @@ public class LPCManager {
 
     /**
      * An event string came from socket. Handle it properly.
-     * 
-     * @param incommingString What came from LPC server
+     *
+     * @param incomingString What came from LPC server
      */
-    private void handleEvent(String incommingString) {
+    private void handleEvent(String incomingString) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     /**
      * Iterate maintenance commands list and start a scheduler at a fix rate
      * to send the maintenance command in intervals.
-     * 
+     * <p>
      * When the scheduled job starts, waits for the queue to be empty, then
      * adds the command to the queue. If queue is not empty sleeps for half
      * a second and then retries.
@@ -248,7 +275,7 @@ public class LPCManager {
         for (final Command command : maintenanceCommands) {
             LOGGER.log(Level.INFO, "Dispatching scheduled job for: " + command.commandString);
 
-            ThreadUtil.scheduleAtFixedRate(new Runnable() {
+            ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(new Runnable() {
 
                 @Override
                 public void run() {
@@ -266,10 +293,10 @@ public class LPCManager {
                             }
                         } else {
                             try {
-                                LOGGER.log(Level.INFO, "Queue not empty. Try again in half a second to send: " + command.commandString);
                                 Thread.sleep(500);
                             } catch (InterruptedException ex) {
-                                LOGGER.log(Level.WARN, "Interrupted while waiting for hlaf a second to retry to send mainenance job: " + command.commandString, ex);
+                                LOGGER.log(Level.WARN, "Interrupted while waiting for half a second to retry to send mainenance job: " + command.commandString, ex);
+                                return;
                             }
                             retries++;
                             // If queue is not empty, retry 3 times and then give up.
@@ -280,17 +307,27 @@ public class LPCManager {
                     }
                 }
             }, 1, interval, TimeUnit.SECONDS);
+            maintenanceTasks.add(task);
         }
     }
 
     /**
+     * Stop all maintenance jobs and create a new scheduler.
+     */
+    private void stopMainenanceJobs() {
+        ((ScheduledThreadPoolExecutor) scheduler).shutdownNow();
+        this.scheduler = Executors.newScheduledThreadPool(MTProperties.getInt(PropName.ThreadPoolSize));
+    }
+
+    /**
      * Thread responsible to take Commands from queue and execute them.
-     * When it dispatched the command it waits fro Thread startIncommingHandler
-     * to notify that there is a response and then it proceeds to the next 
+     * When it dispatched the command it waits fro Thread startIncomingHandler
+     * to notify that there is a response and then it proceeds to the next
      * Command in queue
      */
-    private void startOutcommingHandler() {
-        queueConsumer = new Thread(new Runnable() {
+    private void startOutcomingHandler() {
+
+        outcomingHandler = new Thread(new Runnable() {
 
             @Override
             public void run() {
@@ -299,19 +336,11 @@ public class LPCManager {
                 while (running.get()) {
                     if (!socket.isClosed()) {
                         // Socket ready
-
-                        // Emulate delay for picking up next item from queue
-//                        try {
-//                            Thread.sleep(1300);
-//                        } catch (InterruptedException ex) {
-//                            Logger.getLogger(Command.class.getName()).log(Level.SEVERE, null, ex);
-//                        }
                         synchronized (commandLock) {
                             try {
                                 // Proccess queue (block)
                                 currentCommand = queue.take();
 
-                                System.out.print("Send command from queue:" + currentCommand.commandString);
                                 LOGGER.log(Level.INFO, "Send command from queue:" + currentCommand.commandString);
 
                                 out.write(currentCommand.commandString);
@@ -322,66 +351,86 @@ public class LPCManager {
                                     commandLock.wait();
                                 } catch (InterruptedException ex) {
                                     LOGGER.log(Level.WARN, "Interrupted while waiting for reply for command: " + currentCommand.commandString, ex);
+                                    running.set(false);
                                 }
                             } catch (InterruptedException ex) {
                                 LOGGER.log(Level.WARN, "Interrupted while waiting in empty queue", ex);
+                                running.set(false);
                             }
                         }
                     } else {
                         // Socket not ready
                         LOGGER.log(Level.WARN, "Socket not ready");
-                        setupSocket();
                     }
                 }
             }
-        }
-        );
+        });
 
-        queueConsumer.start();
+        outcomingHandler.start();
     }
 
     /**
      * Thread that is constantly listening for incoming traffic from socket.
      * If it's an event then it handles it to eventHandler otherwise it
      * sets the response to currentCommand and notifies sendCommand that has a
-     * response and StartOutcomingHandler that it can proceed with the next Command
+     * response and StartOutcomingHandler that it can proceed with the next
+     * Command
      */
-    private void startIncommingHandler() {
-        incommingHandler = new Thread(new Runnable() {
+    private void startIncomingHandler() {
+        incomingHandler = new Thread(new Runnable() {
 
             @Override
             public void run() {
-                String incommingString;
+                String incomingString;
                 AtomicBoolean running = new AtomicBoolean(true);
 
                 while (running.get()) {
                     if (!socket.isClosed()) {
                         // Socket ready
                         try {
-                            // Proccess incomming
-                            incommingString = in.readLine();
+                            // Proccess incoming
+                            incomingString = in.readLine();
 
                         } catch (IOException ex) {
                             LOGGER.log(Level.ERROR, "Reading stream produce I/O error", ex);
+                            synchronized (commandLock) {
+                                synchronized (responseLock) {
+                                    // Set response for pending action, notify to return the response
+                                    currentCommand.setResponse("LPC is down while trying to read from socket for: " + currentCommand.commandString);
+                                    responseLock.notify();
+                                }
+                                // Notify to proceed to the next command
+                                commandLock.notify();
+                            }
+                            running.set(false);
                             continue;
                         }
 
                         // LPC is dead
-                        if (incommingString == null) {
+                        if (incomingString == null) {
                             LOGGER.log(Level.WARN, "LPC OFF");
+                            synchronized (commandLock) {
+                                synchronized (responseLock) {
+                                    // Set response for pending action, notify to return the response
+                                    currentCommand.setResponse("LPC is down and socket is closed for: " + currentCommand.commandString);
+                                    responseLock.notify();
+                                }
+                                // Notify to proceed to the next command
+                                commandLock.notify();
+                            }
                             running.set(false);
                             continue;
                         }
 
                         // LPC alive and responded
-                        System.out.println("Got response: '" + incommingString + "'");
-                        if (incommingString.startsWith("event")) {
-                            handleEvent(incommingString);
+                        LOGGER.log(Level.INFO, "Got response: '" + incomingString + "'");
+                        if (incomingString.startsWith("event")) {
+                            handleEvent(incomingString);
                         } else {
                             synchronized (commandLock) {
                                 synchronized (responseLock) {
                                     // Got response for pending action, notify to return the response
-                                    currentCommand.setResponse(incommingString);
+                                    currentCommand.setResponse(incomingString);
                                     responseLock.notify();
                                 }
                                 // Got response for pending action, notify to proceed to the next command
@@ -391,15 +440,47 @@ public class LPCManager {
 
                     } else {
                         // Socket not ready
-                        setupSocket();
+                        LOGGER.log(Level.WARN, "Socket not ready");
+                        running.set(false);
                     }
 
                 }
-                LOGGER.log(Level.WARN, "Incomming handler died.");
-                System.out.println("THIS THREAD DIES HERE");
+                LOGGER.log(Level.WARN, "Incoming handler died.");
             }
-        });
-        incommingHandler.start();
+        }
+        );
+        incomingHandler.start();
     }
 
+    /**
+     * Run for ever , every 1 second and check if incoming / outcoming
+     * threads are alive.
+     */
+    private void startWatchdog() {
+        threadsWatchdog = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                while (true) {
+                    if (!incomingHandler.isAlive() || !outcomingHandler.isAlive()) {
+
+                        if (setupSocket()) {
+//                            stopMainenanceJobs();
+                            startIncomingHandler();
+                            startOutcomingHandler();
+//                            startMaintenanceJobs();
+                        }
+                    }
+
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ex) {
+                        LOGGER.log(Level.WARN, "watchdog interrupted while sleeping", ex);
+                    }
+                }
+            }
+        });
+        threadsWatchdog.start();
+
+    }
 }
