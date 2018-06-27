@@ -5,8 +5,9 @@
  */
 package lpcmanager;
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.concurrent.CountDownLatch;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
 
 /**
  *
@@ -16,24 +17,36 @@ public class Command {
 
     public final String commandString;
     private String response;
-    private COMMAND_STATUS status;
+    CountDownLatch latch = new CountDownLatch(1);
+    static int id = 0;
+    static int id2 = 0;
 
-    private static enum COMMAND_STATUS {
-        PENDING, OK, FAILED, TIMEOUT
-    }
+    private static final org.apache.logging.log4j.Logger LOGGER = LogManager.getLogger(Command.class);
 
     private Command(String commandString) {
         this.commandString = commandString;
-        this.status = Command.COMMAND_STATUS.PENDING;
         this.response = "PENDING";
     }
 
-    public String getResponse() {
+    public String getResponse() throws LPCManagerException {
+        try {
+            latch.await();
+        } catch (InterruptedException ex) {
+            this.response = "-";
+            LOGGER.log(Level.ERROR, ex.getMessage());
+            throw new LPCManagerException("Interrupted while awaiting for reply: "+this.commandString);
+        }
         return this.response;
     }
 
     public void setResponse(String response) {
         this.response = response;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                latch.countDown();
+            }
+        }).start();
     }
 
     public static Command errorTest() {
@@ -44,17 +57,14 @@ public class Command {
         return new Command("maintenance, \r\n");
     }
 
-    public static Command test() {
-        return new Command("test,1,2,3 \r\n");
+    public static Command maintenanceTest() {
+        id++;
+        return new Command("Maintenance test: " + String.valueOf(id) + "\r\n");
     }
 
     public static Command test1() {
-//        try {
-//            Thread.sleep(3000);
-//        } catch (InterruptedException ex) {
-//            Logger.getLogger(Command.class.getName()).log(Level.SEVERE, null, ex);
-//        }
-        return new Command("test,3,2,1 \r\n");
+        id2++;
+        return new Command("test: " + String.valueOf(id2) + "\r\n");
     }
 
     /* ***************************************

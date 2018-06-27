@@ -10,7 +10,12 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
 
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
@@ -143,6 +148,52 @@ public class LPCManager {
         return setupOK;
     }
 
+    public synchronized String sendCommand1(final Command newCommand) throws LPCManagerException{
+        class Task implements Callable<String> {
+
+            @Override
+            public String call() throws LPCManagerException {
+                boolean successfullyAddedToQueue = false;
+
+                if (socket.isClosed()) {
+                    LOGGER.log(Level.ERROR, "LPC Not accepting new entries; socket is down");
+//                        throw new LPCManagerException("LPC Not accepting new entries; socket is down");
+                }
+
+                try {
+                    successfullyAddedToQueue = queue.add(newCommand);
+                } catch (IllegalStateException ex) {
+                        throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
+                }
+                if (successfullyAddedToQueue == false) {
+                        throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
+                }
+
+                LOGGER.log(Level.INFO, "Added to queue: " + newCommand.commandString);
+
+                String resp = newCommand.getResponse();
+                return resp;
+            }
+        }
+        ExecutorService exService = Executors.newSingleThreadExecutor();
+        FutureTask<String> futureTask = new FutureTask<String>(new Task());
+        exService.execute(futureTask);
+        String reply = null;
+        try {
+            // We have the response from LPC
+            reply = handleResponse(futureTask.get());
+        } catch (InterruptedException ex) {
+            LOGGER.log(Level.FATAL, "InterruptedException: "+ex.getMessage());
+        } catch (ExecutionException ex) {
+            LOGGER.log(Level.FATAL, "ExecutionException"+ex.getMessage());
+        } catch (LPCManagerException ex) {
+            LOGGER.log(Level.FATAL, "LPCManagerException"+ex.getMessage());
+            throw new LPCManagerException("LPC command: " + newCommand.commandString + " not executed");
+        }
+        return reply;
+
+    }
+
     /**
      * Try to add new Command to queue and when succeeded, wait for the
      * reply thread to read the reply. Then handle the reply to sender.
@@ -153,47 +204,30 @@ public class LPCManager {
      * @throws LPCManagerException If command is not added to queue you don't
      * have to wait for a a reply.
      */
-    public String sendCommand(final Command newCommand) throws LPCManagerException {
+    public synchronized String sendCommand(final Command newCommand) throws LPCManagerException {
+        boolean successfullyAddedToQueue = false;
+
         if (socket.isClosed()) {
             LOGGER.log(Level.ERROR, "LPC Not accepting new entries; socket is down");
             throw new LPCManagerException("LPC Not accepting new entries; socket is down");
         }
-//        System.out.println("------queue size: " + queue.size() + "-------");
-        boolean successfullyAddedToQueue = false;
 
-        // Try to add  the specified element into this queue, waiting up 
-        // to the specified wait time if necessary for space to become available.
-//        try {
-//            successfullyAddedToQueue = queue.offer(newCommand, 1, TimeUnit.SECONDS);
-//        } catch (InterruptedException ex) {
-//            LOGGER.log(Level.ERROR, "Interrupted while waiting to insert to queue", ex);
-//            throw new LPCManagerException("LPC command: " + newCommand.commandString + " not added to queue", ex);
-//
-//        }
-        // Add to queue and wait for Incoming Handler thread 
-        // to wake you up when it has the response.
-        synchronized (responseLock) {
-            System.out.println("------queue size: " + queue.size() + "-------");
-            try {
-                successfullyAddedToQueue = queue.add(newCommand);
-            } catch (IllegalStateException ex) {
-                throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
-            }
-            if (successfullyAddedToQueue == false) {
-                throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
-            }
-
-            LOGGER.log(Level.INFO, "Added to queue: " + newCommand.commandString);
-            try {
-                responseLock.wait();
-            } catch (InterruptedException ex) {
-                LOGGER.log(Level.ERROR, "Interrupted while waiting for response: " + currentCommand.commandString, ex);
-                throw new LPCManagerException("LPC response waiting interrupted!", ex);
-            }
+        try {
+            successfullyAddedToQueue = queue.add(newCommand);
+        } catch (IllegalStateException ex) {
+            throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
+        }
+        if (successfullyAddedToQueue == false) {
+            throw new LPCManagerException("LPC command: " + newCommand.commandString + " cannot be added to queue");
         }
 
+        LOGGER.log(Level.INFO, "Added to queue: " + newCommand.commandString);
+
+        String resp = newCommand.getResponse();
+
         // We have the response from LPC
-        return handleResponse();
+        return handleResponse(resp);
+
     }
 
     /**
@@ -209,7 +243,7 @@ public class LPCManager {
         ArrayList<String> replies = new ArrayList<String>();
 
         for (Command command : commands) {
-            replies.add(sendCommand(command));
+            replies.add(sendCommand1(command));
         }
         return replies;
     }
@@ -226,8 +260,8 @@ public class LPCManager {
      *
      * @throws LPCManagerException If LPC server reply starts with error
      */
-    private String handleResponse() throws LPCManagerException {
-        String lpcResponse = currentCommand.getResponse();
+    private String handleResponse(String lpcResponse) throws LPCManagerException {
+//        String lpcResponse = currentCommand.getResponse();
 
         if (lpcResponse.startsWith("ok,error")) {
             LOGGER.log(Level.ERROR, "Got ERROR from lpc");
@@ -275,38 +309,33 @@ public class LPCManager {
         for (final Command command : maintenanceCommands) {
             LOGGER.log(Level.INFO, "Dispatching scheduled job for: " + command.commandString);
 
-            ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(new Runnable() {
+            ScheduledFuture<?> task = scheduler.scheduleWithFixedDelay(new Runnable() {
 
                 @Override
                 public void run() {
                     AtomicBoolean retry = new AtomicBoolean(true);
                     Integer retries = 0;
 
-                    while (retry.get()) {
-                        if (queue.isEmpty()) {
-                            try {
-                                sendCommand(command);
-                                LOGGER.log(Level.INFO, "Send mainenance job: " + command.commandString + " after retries: " + retries);
-                                retry.set(false);
-                            } catch (LPCManagerException ex) {
-                                LOGGER.log(Level.INFO, "Add maintenance job: " + command.commandString + " to queue, failed");
-                            }
-                        } else {
-                            try {
-                                Thread.sleep(500);
-                            } catch (InterruptedException ex) {
-                                LOGGER.log(Level.WARN, "Interrupted while waiting for half a second to retry to send mainenance job: " + command.commandString, ex);
-                                return;
-                            }
-                            retries++;
-                            // If queue is not empty, retry 3 times and then give up.
-                            if (retries > 2) {
-                                retry.set(false);
-                            }
+                    System.out.println("");
+                    System.out.println("" + (new Date()).toString());
+                    System.out.println("");
+//                    while (retry.get()) {
+                    if (queue.isEmpty()) {
+                        try {
+                            sendCommand(command);
+                            LOGGER.log(Level.INFO, "Send mainenance job: " + command.commandString + " after retries: " + retries);
+                            retry.set(false);
+                        } catch (LPCManagerException ex) {
+                            LOGGER.log(Level.INFO, "Add maintenance job: " + command.commandString + " to queue, failed");
                         }
+//                        } 
+                    } else {
+                        System.out.println("*************** DROP: " + command.commandString);
+
                     }
+                    System.out.print("DONE JOB:" + command.commandString);
                 }
-            }, 1, interval, TimeUnit.SECONDS);
+            }, 1, 10, TimeUnit.SECONDS);
             maintenanceTasks.add(task);
         }
     }
@@ -465,10 +494,10 @@ public class LPCManager {
                     if (!incomingHandler.isAlive() || !outcomingHandler.isAlive()) {
 
                         if (setupSocket()) {
-//                            stopMainenanceJobs();
+                            stopMainenanceJobs();
                             startIncomingHandler();
                             startOutcomingHandler();
-//                            startMaintenanceJobs();
+                            startMaintenanceJobs();
                         }
                     }
 
