@@ -34,6 +34,8 @@ import org.apache.logging.log4j.Level;
  * thread reading commands from a queue and sending them to LPC server.
  * Threads communicate each other with wait() and notify() in order
  * for a dispatched command to wait for the reply.
+ * <p>
+ * Also scheduled jobs are dispatched for giving maintenance commands list.
  *
  * @author user
  */
@@ -50,7 +52,7 @@ public class LPCManager {
     private BufferedReader in = null;
 
     private LinkedBlockingQueue<Command> queue = null;
-    private LinkedBlockingQueue<Command> maintenanceCommands = null;
+    private ArrayList<Command> maintenanceCommands = null;
     private ArrayList<ScheduledFuture<?>> maintenanceTasks = null;
     private ScheduledFuture<?> maintenanceScheduler = null;
     private ScheduledExecutorService scheduler;
@@ -68,7 +70,7 @@ public class LPCManager {
      * @param port                Port of the LPC server
      * @param maintenanceCommands List of maintenance commands
      */
-    public LPCManager(String ip, Integer port, LinkedBlockingQueue<Command> maintenanceCommands) {
+    public LPCManager(String ip, Integer port, ArrayList<Command> maintenanceCommands) {
 
         this.scheduler = Executors.newScheduledThreadPool(MTProperties.getInt(PropName.ThreadPoolSize));
         this.queue = new LinkedBlockingQueue<Command>(MTProperties.getInt(PropName.LPCQueueSize, 5));
@@ -77,7 +79,7 @@ public class LPCManager {
         this.port = port;
         this.maintenanceCommands = maintenanceCommands;
         this.commandLock = new Object();
-        exService = Executors.newFixedThreadPool(1);
+        this.exService = Executors.newFixedThreadPool(1);
 
         setupSocket();
         startIncomingHandler();
@@ -117,7 +119,7 @@ public class LPCManager {
                 socket.close();
             } catch (IOException ex) {
                 LOGGER.log(Level.ERROR, "Failed to close open socket", ex);
-                setupOK = false;
+                return false;
             }
         }
 
@@ -154,7 +156,7 @@ public class LPCManager {
      * <li> Wait for Command to complete</li>
      * <li> When Command.setResponse() is used the reply is ready</li>
      * <li> Get the reply</li>
-     * <li> Handle reply and return to caller</li>
+     * <li> Handle reply and return string with response to caller</li>
      * </ul>
      *
      * @param newCommand Command to add to queue
@@ -173,11 +175,13 @@ public class LPCManager {
 
         boolean successfullyAddedToQueue = false;
 
+        // Return if socket is not ready
         if (socket.isClosed()) {
             LOGGER.log(Level.WARN, "LPC Not accepting new entries; socket is down");
             throw new LPCManagerException("LPC Not accepting new entries; socket is down");
         }
 
+        // Try to add to queue
         try {
             LOGGER.log(Level.DEBUG, "Adding to queue: " + newCommand.commandString.trim());
             successfullyAddedToQueue = queue.add(newCommand);
@@ -201,13 +205,14 @@ public class LPCManager {
                 return resp;
             }
         }
+        // We need thread (it will block for reply) but return a value
         FutureTask<String> futureTask = new FutureTask<String>(new Task());
         exService.execute(futureTask);
 
         String reply = "-";
         try {
-            // Task run() method has been blocked at the point of newCommand.getResponse()
-            // Use futureTask.get() which blocks until Task run() method returns the string 
+            // Task.call() method has been blocked at the point of newCommand.getResponse()
+            // Use futureTask.get() which blocks until Task.call() method returns the string 
             // with the reply
             reply = handleResponse(futureTask.get());
         } catch (InterruptedException ex) {
@@ -249,7 +254,7 @@ public class LPCManager {
     }
 
     /**
-     * Get the response written to currentCommand and parse it.
+     * Get the LPC response and parse it.
      * When it is an 'error' throw LPCManagerException.
      * When it is 'ok' return the reply written in currentCommand.
      * Events are handled right after the data arrive to
@@ -258,12 +263,15 @@ public class LPCManager {
      * @return The reply from LPC server without the starting 'ok'
      * if the reply has data (comma separated values)
      *
-     * @throws LPCManagerException If LPC server reply starts with error
+     * @throws LPCManagerException If LPC server reply starts with error or
+     * if 'LPC is down' written as reply during
+     * lost of communication with LPC server.
      */
     private String handleResponse(String lpcResponse) throws LPCManagerException {
         if (lpcResponse.startsWith("ok,error")) {
-            LOGGER.log(Level.ERROR, "Got ERROR from lpc");
-            throw new LPCManagerException("OOPS");
+            String error = lpcResponse.substring(lpcResponse.indexOf(",") + 1);
+            LOGGER.log(Level.ERROR, "Got ERROR from lpc: " + error);
+            throw new LPCManagerException("LPC response string contains error: " + error);
         } else if (lpcResponse.startsWith("LPC is down")) {
             LOGGER.log(Level.ERROR, "Got reply 'LPC is down'");
             throw new LPCManagerException("LPC is down");
@@ -293,8 +301,7 @@ public class LPCManager {
      * a second and then retries.
      */
     private void startMaintenanceJobs() {
-//        Integer interval = MTProperties.getInt(PropName.LPCManagerMainenanceJobsIntervalSecs, 0);
-        Integer interval = 5;
+        Integer interval = MTProperties.getInt(PropName.LPCManagerMainenanceJobsIntervalSecs, 0);
 
         // Do nothing if no maintenance commands provided during constructing
         // this object.
@@ -356,10 +363,10 @@ public class LPCManager {
     }
 
     /**
-     * Thread responsible to take Commands from queue and execute them.
-     * When it dispatched the command it waits fro Thread startIncomingHandler
-     * to notify that there is a response and then it proceeds to the next
-     * Command in queue
+     * Thread responsible to peek Commands from queue and execute them.
+     * When it dispatches the command it waits for Thread startIncomingHandler
+     * to remove the Command from queue and notify that there is a response.
+     * Then it proceeds to the next Command in queue
      */
     private void startOutcomingHandler() {
 
@@ -414,9 +421,11 @@ public class LPCManager {
     /**
      * Thread that is constantly listening for incoming traffic from socket.
      * If it's an event then it handles it to eventHandler otherwise it
-     * sets the response to currentCommand and notifies sendCommand that has a
-     * response and StartOutcomingHandler that it can proceed with the next
-     * Command
+     * sets the response to currentCommand by calling
+     * currentCommand.setResponse()
+     * (this call unblocks sendCommand() which waits for the reply to get set).
+     * Then remove the command from queue notify StartOutcomingHandler that
+     * it can proceed with the next Command.
      */
     private void startIncomingHandler() {
         incomingHandler = new Thread(new Runnable() {
@@ -493,10 +502,12 @@ public class LPCManager {
     }
 
     /**
-     * Run for ever , every 1 second and check if incoming / outcoming
-     * threads are alive.
+     * Run for ever , every LPCManagerWatchdogInteravalMills milliseconds and 
+     * check if incoming / outcoming threads are alive.
      */
     private void startWatchdog() {
+        final Integer interval = MTProperties.getInt(PropName.LPCManagerWatchdogInteravalMills, 2000);
+
         threadsWatchdog = new Thread(new Runnable() {
 
             @Override
@@ -514,7 +525,7 @@ public class LPCManager {
                     }
 
                     try {
-                        Thread.sleep(1000);
+                        Thread.sleep(interval);
                     } catch (InterruptedException ex) {
                         LOGGER.log(Level.WARN, "watchdog interrupted while sleeping", ex.getMessage());
                     }
