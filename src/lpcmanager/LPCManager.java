@@ -2,7 +2,6 @@ package lpcmanager;
 
 import main.java.com.amco.amcoticketmt.utils.MTProperties;
 import main.java.com.amco.amcoticketmt.utils.PropName;
-import main.java.com.amco.amcoticketmt.utils.ThreadUtil;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -10,7 +9,6 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -52,7 +50,7 @@ public class LPCManager {
     private BufferedReader in = null;
 
     private LinkedBlockingQueue<Command> queue = null;
-    private ArrayList<Command> maintenanceCommands = null;
+    private LinkedBlockingQueue<Command> maintenanceCommands = null;
     private ArrayList<ScheduledFuture<?>> maintenanceTasks = null;
     private ScheduledFuture<?> maintenanceScheduler = null;
     private ScheduledExecutorService scheduler;
@@ -61,7 +59,8 @@ public class LPCManager {
     private Thread incomingHandler = null;
     private Thread outcomingHandler = null;
     private Thread threadsWatchdog = null;
-        ExecutorService exService ;
+    ExecutorService exService;
+
     /**
      * Use LPCManagerProxy to create new LPCManager
      *
@@ -69,7 +68,7 @@ public class LPCManager {
      * @param port                Port of the LPC server
      * @param maintenanceCommands List of maintenance commands
      */
-    public LPCManager(String ip, Integer port, ArrayList<Command> maintenanceCommands) {
+    public LPCManager(String ip, Integer port, LinkedBlockingQueue<Command> maintenanceCommands) {
 
         this.scheduler = Executors.newScheduledThreadPool(MTProperties.getInt(PropName.ThreadPoolSize));
         this.queue = new LinkedBlockingQueue<Command>(MTProperties.getInt(PropName.LPCQueueSize, 5));
@@ -78,7 +77,7 @@ public class LPCManager {
         this.port = port;
         this.maintenanceCommands = maintenanceCommands;
         this.commandLock = new Object();
-        exService = Executors.newFixedThreadPool(10);
+        exService = Executors.newFixedThreadPool(1);
 
         setupSocket();
         startIncomingHandler();
@@ -100,7 +99,7 @@ public class LPCManager {
             socket.close();
 
         } catch (IOException ex) {
-            LOGGER.log(Level.FATAL, "Failed to terminate LPCManager", ex);
+            LOGGER.log(Level.ERROR, "Failed to terminate LPCManager", ex);
         }
     }
 
@@ -117,7 +116,7 @@ public class LPCManager {
             try {
                 socket.close();
             } catch (IOException ex) {
-                LOGGER.log(Level.ERROR, ex);
+                LOGGER.log(Level.ERROR, "Failed to close open socket", ex);
                 setupOK = false;
             }
         }
@@ -172,66 +171,24 @@ public class LPCManager {
      */
     public String sendCommand(final Command newCommand) throws LPCManagerException {
 
-        addToQueue(newCommand);
-
-        return waitForReply(newCommand);
-    }
-
-    /**
-     * Convenience method for batch inserting commands. If one Command fails
-     * the other Commands are not executed.
-     *
-     * @param commands List that contains all batch Commands
-     * @return List with the replies from LPC server
-     *
-     * @throws LPCManagerException If sendCommand throws it.
-     */
-    public synchronized ArrayList<String> sendBatchCommand(Command... commands) throws LPCManagerException {
-        final ArrayList<String> replies = new ArrayList<String>();
-
-        for (final Command command : commands) {
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        replies.add(sendCommand(command));
-                    } catch (LPCManagerException ex) {
-                        java.util.logging.Logger.getLogger(LPCManager.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-                    }
-                }
-            }).start();
-        }
-        return replies;
-    }
-
-    private void addToQueue(Command command) throws LPCManagerException {
         boolean successfullyAddedToQueue = false;
 
         if (socket.isClosed()) {
-            LOGGER.log(Level.ERROR, "LPC Not accepting new entries; socket is down");
+            LOGGER.log(Level.WARN, "LPC Not accepting new entries; socket is down");
             throw new LPCManagerException("LPC Not accepting new entries; socket is down");
         }
 
         try {
-            LOGGER.log(Level.INFO, "Adding to queue: " + command.commandString.trim());
-            System.out.println("---- queue:");
-            for (Command c : queue) {
-                System.out.println(c.commandString.trim());
-            }
-            System.out.println("queue ------");
-
-            successfullyAddedToQueue = queue.add(command);
+            LOGGER.log(Level.DEBUG, "Adding to queue: " + newCommand.commandString.trim());
+            successfullyAddedToQueue = queue.add(newCommand);
         } catch (IllegalStateException ex) {
-            throw new LPCManagerException("LPC command: " + command.commandString.trim() + " cannot be added to queue");
+            throw new LPCManagerException("LPC command: " + newCommand.commandString.trim() + " cannot be added to queue" + ex.getMessage());
         }
 
         if (successfullyAddedToQueue == false) {
-            throw new LPCManagerException("LPC command: " + command.commandString.trim() + " cannot be added to queue");
+            throw new LPCManagerException("LPC command: " + newCommand.commandString.trim() + " cannot be added to queue");
         }
 
-    }
-
-    private String waitForReply(final Command newCommand) throws LPCManagerException {
         class Task implements Callable<String> {
 
             @Override
@@ -254,21 +211,41 @@ public class LPCManager {
             // with the reply
             reply = handleResponse(futureTask.get());
         } catch (InterruptedException ex) {
-            LOGGER.log(Level.FATAL, "InterruptedException: " + ex.getMessage());
+            LOGGER.log(Level.ERROR, "InterruptedException: " + ex.getMessage());
         } catch (ExecutionException ex) {
-            LOGGER.log(Level.FATAL, "ExecutionException" + ex.getMessage());
+            LOGGER.log(Level.ERROR, "ExecutionException" + ex.getMessage());
         } catch (LPCManagerException ex) {
-            LOGGER.log(Level.FATAL, "LPCManagerException" + ex.getMessage());
+            LOGGER.log(Level.ERROR, "LPCManagerException" + ex.getMessage());
             throw new LPCManagerException("LPC command: " + newCommand.commandString.trim() + " not executed");
         }
-//        exService.shutdown();
 
-        System.out.println("---- queue:");
-        for (Command c : queue) {
-            System.out.println(c.commandString.trim());
-        }
-        System.out.println("queue ------");
         return reply;
+    }
+
+    /**
+     * Convenience method for batch inserting commands. If one Command fails
+     * the other Commands are not executed.
+     *
+     * @param commands List that contains all batch Commands
+     * @return List with the replies from LPC server
+     *
+     * @throws LPCManagerException If sendCommand throws it.
+     */
+    public synchronized ArrayList<String> sendBatchCommand(Command... commands) throws LPCManagerException {
+        final ArrayList<String> replies = new ArrayList<String>();
+
+        for (final Command command : commands) {
+            replies.add(sendCommand(command));
+        }
+        return replies;
+    }
+
+    private void printQueue(String msg) {
+        System.out.print("---- " + msg);
+        for (Command c : queue) {
+            System.out.print(c.commandString.trim() + ", ");
+        }
+        System.out.println();
     }
 
     /**
@@ -284,8 +261,6 @@ public class LPCManager {
      * @throws LPCManagerException If LPC server reply starts with error
      */
     private String handleResponse(String lpcResponse) throws LPCManagerException {
-//        String lpcResponse = currentCommand.getResponse();
-
         if (lpcResponse.startsWith("ok,error")) {
             LOGGER.log(Level.ERROR, "Got ERROR from lpc");
             throw new LPCManagerException("OOPS");
@@ -294,7 +269,7 @@ public class LPCManager {
             throw new LPCManagerException("LPC is down");
         } else if (lpcResponse.startsWith("ok")) {
             String a = lpcResponse.substring(lpcResponse.indexOf(",") + 1);
-            LOGGER.log(Level.INFO, "ANSWER: " + a);
+            LOGGER.log(Level.DEBUG, "ANSWER: " + a);
         }
 
         return lpcResponse;
@@ -319,7 +294,7 @@ public class LPCManager {
      */
     private void startMaintenanceJobs() {
 //        Integer interval = MTProperties.getInt(PropName.LPCManagerMainenanceJobsIntervalSecs, 0);
-        Integer interval = 1;
+        Integer interval = 5;
 
         // Do nothing if no maintenance commands provided during constructing
         // this object.
@@ -341,15 +316,15 @@ public class LPCManager {
                     Integer retries = 0;
 
 //                    while (retry.get()) {
-                        if (queue.isEmpty()) {
-                            try {
-                                sendCommand(command);
-                                LOGGER.log(Level.INFO, "Send mainenance job: " + command.commandString.trim() + " after retries: " + retries);
-                                retry.set(false);
-                            } catch (LPCManagerException ex) {
-                                LOGGER.log(Level.ERROR, "Add maintenance job: " + command.commandString.trim() + " to queue, failed");
-                            }
-                        } 
+                    if (queue.isEmpty()) {
+                        try {
+                            sendCommand(command);
+                            LOGGER.log(Level.DEBUG, "Send mainenance job: " + command.commandString.trim() + " after retries: " + retries);
+                            retry.set(false);
+                        } catch (LPCManagerException ex) {
+                            LOGGER.log(Level.ERROR, "Add maintenance job: " + command.commandString.trim() + " to queue, failed");
+                        }
+                    }
 //                        } else {
 //                            try {
 //                                Thread.sleep(500);
@@ -365,7 +340,7 @@ public class LPCManager {
 //                            }
 //                        }
 //                    }
-                    System.out.println("DONE JOB:" + command.commandString.trim());
+                    LOGGER.log(Level.DEBUG, "Done with maintenance job:" + command.commandString.trim());
                 }
             }, 1, interval, TimeUnit.SECONDS);
             maintenanceTasks.add(task);
@@ -397,12 +372,13 @@ public class LPCManager {
                 while (running.get()) {
                     if (!socket.isClosed()) {
                         // Socket ready
-                        synchronized (commandLock) {
-                            try {
-                                // Proccess queue (block)
-                                currentCommand = queue.take();
+                        // Proccess queue
+                        if ((currentCommand = queue.peek()) != null) {
+                            synchronized (commandLock) {
 
-                                LOGGER.log(Level.INFO, "Send command from queue:" + currentCommand.commandString.trim());
+                                printQueue("NOT EMPTY: ");
+
+                                LOGGER.log(Level.DEBUG, "Send command from queue:" + currentCommand.commandString.trim());
 
                                 out.write(currentCommand.commandString);
                                 out.flush();
@@ -411,16 +387,21 @@ public class LPCManager {
                                 try {
                                     commandLock.wait();
                                 } catch (InterruptedException ex) {
-                                    LOGGER.log(Level.WARN, "Interrupted while waiting for reply for command: " + currentCommand.commandString.trim(), ex);
+                                    LOGGER.log(Level.WARN, "Interrupted while waiting for reply for command: " + currentCommand.commandString.trim(), ex.getMessage());
                                     running.set(false);
                                 }
+                            }
+                        } else {
+                            try {
+                                Thread.sleep(100);
                             } catch (InterruptedException ex) {
-                                LOGGER.log(Level.WARN, "Interrupted while waiting in empty queue", ex);
-                                running.set(false);
+                                LOGGER.log(Level.ERROR, "Interrupted while sleeping on an empty queue", ex.getMessage());
                             }
                         }
+
                     } else {
                         // Socket not ready
+                        running.set(false);
                         LOGGER.log(Level.WARN, "Socket not ready");
                     }
                 }
@@ -453,12 +434,14 @@ public class LPCManager {
                             incomingString = in.readLine();
 
                         } catch (IOException ex) {
-                            LOGGER.log(Level.ERROR, "Reading stream produce I/O error", ex);
-                            synchronized (commandLock) {
-                                // Set response for pending action
-                                currentCommand.setResponse("LPC is down while trying to read from socket for: " + currentCommand.commandString.trim());
-                                // Notify to proceed to the next command
-                                commandLock.notify();
+                            LOGGER.log(Level.ERROR, "Reading stream produce I/O error", ex.getMessage());
+                            if (currentCommand != null) {
+                                synchronized (commandLock) {
+                                    // Set response for pending action
+                                    currentCommand.setResponse("LPC is down while trying to read from socket for: " + currentCommand.commandString.trim());
+                                    // Notify to proceed to the next command
+                                    commandLock.notify();
+                                }
                             }
                             running.set(false);
                             continue;
@@ -467,26 +450,31 @@ public class LPCManager {
                         // LPC is dead
                         if (incomingString == null) {
                             LOGGER.log(Level.WARN, "LPC OFF");
-                            synchronized (commandLock) {
-                                // Set response for pending action, notify to return the response
-                                currentCommand.setResponse("LPC is down and socket is closed for: " + currentCommand.commandString.trim());
-                                // Notify to proceed to the next command
-                                commandLock.notify();
+                            if (currentCommand != null) {
+                                synchronized (commandLock) {
+                                    // Set response for pending action, notify to return the response
+                                    currentCommand.setResponse("LPC is down and socket is closed for: " + currentCommand.commandString.trim());
+                                    // Notify to proceed to the next command
+                                    commandLock.notify();
+                                }
                             }
                             running.set(false);
                             continue;
                         }
 
                         // LPC alive and responded
-                        LOGGER.log(Level.INFO, "Got response: '" + incomingString + "'");
+                        LOGGER.log(Level.DEBUG, "Got response: '" + incomingString + "'");
                         if (incomingString.startsWith("event")) {
                             handleEvent(incomingString);
                         } else {
-                            synchronized (commandLock) {
-                                // Got response for pending action, notify to return the response
-                                currentCommand.setResponse(incomingString);
-                                // Got response for pending action, notify to proceed to the next command
-                                commandLock.notify();
+                            if (currentCommand != null) {
+                                synchronized (commandLock) {
+                                    // Got response for pending action, notify to return the response
+                                    currentCommand.setResponse(incomingString);
+                                    // Got response for pending action, notify to proceed to the next command
+                                    queue.remove();
+                                    commandLock.notify();
+                                }
                             }
                         }
 
@@ -528,7 +516,7 @@ public class LPCManager {
                     try {
                         Thread.sleep(1000);
                     } catch (InterruptedException ex) {
-                        LOGGER.log(Level.WARN, "watchdog interrupted while sleeping", ex);
+                        LOGGER.log(Level.WARN, "watchdog interrupted while sleeping", ex.getMessage());
                     }
                 }
             }
