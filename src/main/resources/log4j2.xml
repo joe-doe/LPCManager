@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="DEBUG">
-    <Properties>
-        <Property name="log-path">/tmp/A</Property>
-    </Properties>
+<Configuration status="INFO">
+
     <Appenders>
     <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout>
@@ -10,12 +8,13 @@
             </PatternLayout>
         </Console>
     </Appenders>
+    
     <Loggers>
-        <Logger name="root" level="debug">
-            <appender-ref ref="Console" level="debug"/>
+        <Logger name="root" level="info">
+            <appender-ref ref="Console" level="info"/>
         </Logger>
-        <Root level="debug" >
+<!--        <Root level="debug" >
             <AppenderRef ref="Console"/>
-        </Root>
+        </Root>-->
     </Loggers>
 </Configuration>
