@@ -19,6 +19,7 @@ public class Command {
     private String response;
     CountDownLatch latch = new CountDownLatch(1);
     static int id = 0;
+    static int id1 = 0;
     static int id2 = 0;
 
     private static final org.apache.logging.log4j.Logger LOGGER = LogManager.getLogger(Command.class);
@@ -33,7 +34,7 @@ public class Command {
             latch.await();
         } catch (InterruptedException ex) {
             this.response = "-";
-            LOGGER.log(Level.ERROR, ex.getMessage());
+            LOGGER.log(Level.ERROR, "Interrupted while awaiting for reply");
             throw new LPCManagerException("Interrupted while awaiting for reply: "+this.commandString);
         }
         return this.response;
@@ -58,13 +59,22 @@ public class Command {
     }
 
     public static Command maintenanceTest() {
+        return new Command("MaintenanceTest " + "\r\n");
+    }
+
+    public static Command keyboardTest() {
         id++;
-        return new Command("Maintenance test: " + String.valueOf(id) + "\r\n");
+        return new Command("KeyboardTest: " + String.valueOf(id) + "\r\n");
     }
 
     public static Command test1() {
+        id1++;
+        return new Command("test 1: " + String.valueOf(id1) + "\r\n");
+    }
+
+    public static Command test2() {
         id2++;
-        return new Command("test: " + String.valueOf(id2) + "\r\n");
+        return new Command("test 2: " + String.valueOf(id2) + "\r\n");
     }
 
     /* ***************************************

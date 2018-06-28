@@ -76,7 +76,7 @@ public enum PropName {
     RestartAfterUpgrade,
     LCDImagesPath,
     LPCMessageDuration,
-    LPCManagerMainenanceJobs,
+    LPCManagerMainenanceJobsIntervalSecs,
     LPCQueueSize;
 }
 
