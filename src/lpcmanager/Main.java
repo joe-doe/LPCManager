@@ -7,7 +7,9 @@ package lpcmanager;
 
 import java.util.ArrayList;
 import java.util.Scanner;
-import java.util.logging.Logger;
+import java.util.concurrent.LinkedBlockingQueue;
+import main.java.com.amco.amcoticketmt.utils.MTProperties;
+import main.java.com.amco.amcoticketmt.utils.PropName;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 
@@ -29,6 +31,8 @@ public class Main {
         ml.add(Command.getSysUptime());
         final LPCManager a = LPCManagerProxy.getLPCManager("127.0.0.1", 8889, ml);
 
+        
+        // Keyboard emulation of adding to queue from thread other than main thread
         Thread kb = new Thread(new Runnable() {
 
             @Override
@@ -55,83 +59,55 @@ public class Main {
         });
         kb.start();
 
-//        for (int i = 0; i < 3; i++) {
-//            try {
-//                System.out.println("SCREEN OFF FULL RESP: " + a.sendCommand(Command.screenOn()));
-//            } catch (LPCManagerException ex) {
-//                LOGGER.log(Level.ERROR, "LPC EXCEPTION");
-//            }
-//        }
-        //         ADD COMMAND TO QUEUE
-        System.out.println(
-                "\n++++++++++++++++++++++ CP 1 +++++++++++++++++++");
-        for (int i = 0;
-                i < 2; i++) {
+        System.out.println("\n++++++++++++++++++++++ CP TEST +++++++++++++++++++");
+        // Send 3 commands sequentialy 
+        for (int i = 0; i < 3; i++) {
+            try {
+                System.out.println("TEST FULL RESP: " + a.sendCommand(Command.test1()));
+            } catch (LPCManagerException ex) {
+                LOGGER.log(Level.ERROR, "LPC EXCEPTION");
+            }
+        }
+        
+        System.out.println("\n++++++++++++++++++++++ CP TEST 2 +++++++++++++++++++");
+        // Start new Thread for every command
+        for (int i = 0; i < 10; i++) {
             new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        System.out.println("SCREEN OFF FULL RESP: " + a.sendCommand(Command.screenOff()));
+                        System.out.println("TEST 2 FULL RESP: " + a.sendCommand(Command.test2()));
                     } catch (LPCManagerException ex) {
                         LOGGER.log(Level.ERROR, ex.getMessage());
                     }
                 }
             }).start();
         }
-//        for (int i = 0; i < 13; i++) {
-//            new Thread(new Runnable() {
-//                @Override
-//                public void run() {
-//                    try {
-//                        System.out.println("SCREEN OFF FULL RESP: " + a.sendCommand(Command.getFirmwareVersion()));
-//                    } catch (LPCManagerException ex) {
-//                        LOGGER.log(Level.ERROR, ex.getMessage());
-//                    }
-//                }
-//            }).start();
-//        }
 
-        System.out.println(
-                "\n++++++++++++++++++++++ CP 2 +++++++++++++++++++");
-//        class MyRunnable implements Runnable{
-//
-//            @Override
-//            public void run() {
-//                try {
-//                    a.sendCommand(Command.test2());
-//                } catch (LPCManagerException ex) {
-//                    Logger.getLogger(Main.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-//                }
-//            }
-//        
-//    }
-
-//        // START BATCH IN THREAD
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                try {
-//                    String b = a.sendCommand(Command.test2());
-//                    String c = a.sendCommand(Command.test2());
-//                    String d = a.sendCommand(Command.test2());
-//                    String e = a.sendCommand(Command.test2());
-//                    String f = a.sendCommand(Command.test2());
-//                } catch (LPCManagerException ex) {
-//                    Logger.getLogger(Main.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
-//                }
-//            }
-//        }).start();
-        System.out.println(
-                "\n++++++++++++++++++++++ CP 3 +++++++++++++++++++");
-
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
+        System.out.println("\n++++++++++++++++++++++ CP TEST 3 +++++++++++++++++++");
+        // New thread with multiple commands
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String b = a.sendCommand(Command.test3());
+                    String c = a.sendCommand(Command.test3());
+                    String d = a.sendCommand(Command.test3());
+                    String e = a.sendCommand(Command.test3());
+                    String f = a.sendCommand(Command.test3());
+                } catch (LPCManagerException ex) {
+                    LOGGER.log(Level.ERROR, ex);
+                }
+            }
+        }).start();
+        
+        
+        System.out.println("\n++++++++++++++++++++++ CP TEST 4 +++++++++++++++++++");
+        // Send batch command
         ArrayList<String> replies = new ArrayList<String>();
 
-//        System.out.println("-------THREAD STARTED---------------");
         try {
-            replies = a.sendBatchCommand(Command.test1(), Command.test1(), Command.test1(), Command.test1(), Command.test1(), Command.test1());
+            replies = a.sendBatchCommand(Command.test4(), Command.test4(), Command.test4(), Command.test4(), Command.test4(), Command.test4());
         } catch (LPCManagerException ex) {
             LOGGER.log(Level.ERROR, "BATCH LPC EXCEPTION");
         }
@@ -139,74 +115,54 @@ public class Main {
         for (String reply : replies) {
             System.out.println(reply);
         }
-//            }
-//        }).start();
 
-        System.out.println(
-                "\n++++++++++++++++++++++ CP 4 +++++++++++++++++++");
-
+        System.out.println("\n++++++++++++++++++++++ CP TEST 5 +++++++++++++++++++");
         // START BATCH IN THREAD
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                ArrayList<String> replies = new ArrayList<String>();
-//
-//                System.out.println("-------THREAD STARTED---------------");
-//                try {
-//                    replies = a.sendBatchCommand(Command.screenOn(true), Command.screenOn(true), Command.screenOn(true), Command.screenOn(true), Command.screenOn(false));
-//                } catch (LPCManagerException ex) {
-//                    System.out.println("1 *************************");
-//                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-//                }
-//
-//                for (String reply : replies) {
-//                    System.out.println(reply);
-//                }
-//            }
-//        }).start();
-        // START BATCH IN THREAD WITH ERROR
-//        System.out.println("\n2");
-//        ArrayList<String> replies = new ArrayList<String>();
-//
-//        try {
-//            replies = a.sendBatchCommand(Command.screenOff(), Command.errorTest(), Command.screenOn());
-//            // NEVER PRINT
-//            System.out.println("**** REPLY FORM BATCH WITH ERROR ****");
-//            for (String reply : replies) {
-//                System.out.println(reply);
-//            }
-//        } catch (LPCManagerException e) {
-//            System.out.println("EX");
-//        }
-//
-//        // START BATCH IN THREAD
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                ArrayList<String> replies = new ArrayList<String>();
-//
-//                System.out.println("-------THREAD STARTED---------------");
-//                try {
-//                    replies = a.sendBatchCommand(Command.test(), Command.test(), Command.test(), Command.test(), Command.test());
-//                } catch (LPCManagerException ex) {
-//                    System.out.println("2 *************************");
-//                    Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-//                }
-//                for (String reply : replies) {
-//                    System.out.println(reply);
-//                }
-//            }
-//
-//        }).start();
-//
-//        // ADD COMMAND TO QUEUE
-//        System.out.println("\n3");
-//        try {
-//            a.sendCommand(Command.screenOff());
-//        } catch (LPCManagerException ex) {
-//            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-//        }
-//
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                ArrayList<String> replies = new ArrayList<String>();
+
+                System.out.println("-------THREAD STARTED---------------");
+                try {
+                    replies = a.sendBatchCommand(Command.test5(), Command.test5(), Command.test5(), Command.test5(), Command.test5(), Command.test5());
+                } catch (LPCManagerException ex) {
+                    System.out.println("1 *************************");
+                    LOGGER.log(Level.ERROR, ex);
+                }
+
+                for (String reply : replies) {
+                    System.out.println(reply);
+                }
+            }
+        }).start();
+
+        
+        System.out.println("\n++++++++++++++++++++++ CP BATCH WITH ERROR  +++++++++++++++++++");
+        // START BATCH WITH ERROR
+        ArrayList<String> replies2 = new ArrayList<String>();
+
+        try {
+            replies2 = a.sendBatchCommand(Command.screenOff(), Command.errorTest(), Command.screenOn());
+            // NEVER PRINT
+            System.out.println("**** REPLY FORM BATCH WITH ERROR ****");
+            for (String reply : replies2) {
+                System.out.println(reply);
+            }
+        } catch (LPCManagerException ex) {
+            System.out.println("BATCH COMMAND FAILED: "+ ex.getMessage());
+        }
+
+        System.out.println("\n++++++++++++++++++++++ CP SIMPLE ADD +++++++++++++++++++");
+        // ADD COMMAND TO QUEUE
+        try {
+            a.sendCommand(Command.screenOff());
+        } catch (LPCManagerException ex) {
+            LOGGER.log(Level.ERROR, ex);
+        }
+
+
+        System.out.println("\n++++++++++++++++++++++ CP 7 +++++++++++++++++++");
 //        // ADD COMMAND TO QUEUE
 //        System.out.println("\n4");
 //        try {
@@ -215,6 +171,16 @@ public class Main {
 //            System.out.println("EX");
 //        }
 //
+
+
+
+
+
+
+
+
+
+
 //        LPCManager b = LPCManagerProxy.getLPCManager("127.0.0.1", 8889);
 //
 //        if (a == b) {

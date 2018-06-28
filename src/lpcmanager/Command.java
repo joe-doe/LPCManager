@@ -21,6 +21,10 @@ public class Command {
     static int id = 0;
     static int id1 = 0;
     static int id2 = 0;
+    static int id3 = 0;
+    static int id4 = 0;
+    static int id5 = 0;
+    static int kb_id = 0;
 
     private static final org.apache.logging.log4j.Logger LOGGER = LogManager.getLogger(Command.class);
 
@@ -63,8 +67,13 @@ public class Command {
     }
 
     public static Command keyboardTest() {
+        kb_id++;
+        return new Command("KeyboardTest: " + String.valueOf(kb_id) + "\r\n");
+    }
+
+    public static Command test() {
         id++;
-        return new Command("KeyboardTest: " + String.valueOf(id) + "\r\n");
+        return new Command("test: " + String.valueOf(id) + "\r\n");
     }
 
     public static Command test1() {
@@ -75,6 +84,21 @@ public class Command {
     public static Command test2() {
         id2++;
         return new Command("test 2: " + String.valueOf(id2) + "\r\n");
+    }
+
+    public static Command test3() {
+        id3++;
+        return new Command("test 3: " + String.valueOf(id3) + "\r\n");
+    }
+
+    public static Command test4() {
+        id4++;
+        return new Command("test 4: " + String.valueOf(id4) + "\r\n");
+    }
+
+    public static Command test5() {
+        id5++;
+        return new Command("test 5: " + String.valueOf(id5) + "\r\n");
     }
 
     /* ***************************************
