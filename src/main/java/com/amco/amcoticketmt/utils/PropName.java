@@ -77,7 +77,7 @@ public enum PropName {
     LCDImagesPath,
     LPCMessageDuration,
     LPCManagerMainenanceJobsIntervalSecs,
-    LPCManagerWatchdogInteravalSecs,
+    LPCManagerWatchdogInteravalMills,
     LPCQueueSize;
 }
 
