@@ -17,7 +17,9 @@ public class Command {
 
     public final String commandString;
     private String response;
-    CountDownLatch latch = new CountDownLatch(1);
+    private CountDownLatch latch;
+    private Long timeToLive;
+
     static int id = 0;
     static int id1 = 0;
     static int id2 = 0;
@@ -31,6 +33,8 @@ public class Command {
     private Command(String commandString) {
         this.commandString = commandString;
         this.response = "PENDING";
+        this.latch = new CountDownLatch(1);
+        this.timeToLive = 300L;
     }
 
     public String getResponse() throws LPCManagerException {
@@ -39,7 +43,7 @@ public class Command {
         } catch (InterruptedException ex) {
             this.response = "-";
             LOGGER.log(Level.ERROR, "Interrupted while awaiting for reply");
-            throw new LPCManagerException("Interrupted while awaiting for reply: "+this.commandString);
+            throw new LPCManagerException("Interrupted while awaiting for reply: " + this.commandString);
         }
         return this.response;
     }
@@ -52,6 +56,15 @@ public class Command {
                 latch.countDown();
             }
         }).start();
+    }
+
+    public Long getTimeToLive() {
+        return this.timeToLive;
+    }
+
+    public Command setTimeToLive(Long timeToLive) {
+        this.timeToLive = timeToLive;
+        return this;
     }
 
     public static Command errorTest() {

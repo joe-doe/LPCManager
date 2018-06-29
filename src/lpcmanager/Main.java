@@ -27,8 +27,8 @@ public class Main {
     public static void main(String[] args) {
 
         ArrayList<Command> ml = new ArrayList<Command>();
-        ml.add(Command.maintenanceTest());
-        ml.add(Command.getSysUptime());
+        ml.add(Command.maintenanceTest().setTimeToLive(10000L));
+        ml.add(Command.getSysUptime().setTimeToLive(10000L));
         final LPCManager a = LPCManagerProxy.getLPCManager("127.0.0.1", 8889, ml);
 
         
@@ -63,7 +63,7 @@ public class Main {
         // Send 3 commands sequentialy 
         for (int i = 0; i < 3; i++) {
             try {
-                System.out.println("TEST FULL RESP: " + a.sendCommand(Command.test1()));
+                System.out.println("TEST FULL RESP: " + a.sendCommand(Command.test1().setTimeToLive(10000L)));
             } catch (LPCManagerException ex) {
                 LOGGER.log(Level.ERROR, "LPC EXCEPTION");
             }
@@ -78,6 +78,7 @@ public class Main {
                     try {
                         System.out.println("TEST 2 FULL RESP: " + a.sendCommand(Command.test2()));
                     } catch (LPCManagerException ex) {
+                        System.out.println("---===== NOT EXECUTED ========-----");
                         LOGGER.log(Level.ERROR, ex.getMessage());
                     }
                 }
