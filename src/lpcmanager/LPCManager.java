@@ -220,8 +220,7 @@ public class LPCManager {
         } catch (ExecutionException ex) {
             LOGGER.log(Level.ERROR, "ExecutionException" + ex.getMessage());
         } catch (LPCManagerException ex) {
-            LOGGER.log(Level.ERROR, "LPCManagerException" + ex.getMessage());
-            throw new LPCManagerException("LPC command: " + newCommand.commandString.trim() + " not executed");
+            throw new LPCManagerException(ex.getMessage());
         }
 
         return reply;
@@ -268,13 +267,9 @@ public class LPCManager {
      * lost of communication with LPC server.
      */
     private String handleResponse(String lpcResponse) throws LPCManagerException {
-        if (lpcResponse.startsWith("ok,error")) {
+        if (lpcResponse.startsWith("error")) {
             String error = lpcResponse.substring(lpcResponse.indexOf(",") + 1);
-            LOGGER.log(Level.ERROR, "Got ERROR from lpc: " + error);
-            throw new LPCManagerException("LPC response string contains error: " + error);
-        } else if (lpcResponse.startsWith("LPC is down")) {
-            LOGGER.log(Level.ERROR, "Got reply 'LPC is down'");
-            throw new LPCManagerException("LPC is down");
+            throw new LPCManagerException("Got error from lpc: " + error);
         } else if (lpcResponse.startsWith("ok")) {
             String a = lpcResponse.substring(lpcResponse.indexOf(",") + 1);
             LOGGER.log(Level.DEBUG, "ANSWER: " + a);
@@ -432,7 +427,7 @@ public class LPCManager {
 
             @Override
             public void run() {
-                String incomingString;
+                String incomingString = null;
                 AtomicBoolean running = new AtomicBoolean(true);
 
                 while (running.get()) {
@@ -441,13 +436,12 @@ public class LPCManager {
                         try {
                             // Proccess incoming
                             incomingString = in.readLine();
-
                         } catch (IOException ex) {
                             LOGGER.log(Level.ERROR, "Reading stream produce I/O error", ex.getMessage());
                             if (currentCommand != null) {
                                 synchronized (commandLock) {
                                     // Set response for pending action
-                                    currentCommand.setResponse("LPC is down while trying to read from socket for: " + currentCommand.commandString.trim());
+                                    currentCommand.setResponse("error,LOCAL,LPC is down while trying to read from socket for: " + currentCommand.commandString.trim());
                                     // Notify to proceed to the next command
                                     commandLock.notify();
                                 }
@@ -462,7 +456,7 @@ public class LPCManager {
                             if (currentCommand != null) {
                                 synchronized (commandLock) {
                                     // Set response for pending action, notify to return the response
-                                    currentCommand.setResponse("LPC is down and socket is closed for: " + currentCommand.commandString.trim());
+                                    currentCommand.setResponse("error,LOCAL,LPC is down and socket is closed for: " + currentCommand.commandString.trim());
                                     // Notify to proceed to the next command
                                     commandLock.notify();
                                 }
@@ -502,7 +496,7 @@ public class LPCManager {
     }
 
     /**
-     * Run for ever , every LPCManagerWatchdogInteravalMills milliseconds and 
+     * Run for ever , every LPCManagerWatchdogInteravalMills milliseconds and
      * check if incoming / outcoming threads are alive.
      */
     private void startWatchdog() {
@@ -520,7 +514,7 @@ public class LPCManager {
                             startIncomingHandler();
                             startOutcomingHandler();
                             startMaintenanceJobs();
-                            LOGGER.log(Level.INFO, "LPC is up and running!");
+                            LOGGER.log(Level.DEBUG, "LPC is up and running!");
                         }
                     }
 
